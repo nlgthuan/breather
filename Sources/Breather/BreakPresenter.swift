@@ -42,19 +42,15 @@ final class BreakPresenter {
     func showNudge(kinds: [BreakKind], canSnooze: Bool, canSkip: Bool, autoStartAfter: TimeInterval,
                    onStart: @escaping () -> Void, onSnooze: @escaping () -> Void, onSkip: @escaping () -> Void) {
         dismissNudge()
-        let screen = Self.activeScreen
 
         // Soft glow around the screen edge. Click-through.
-        let glow = NSWindow(contentRect: screen.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        let glow = NSWindow(contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: false)
         glow.isOpaque = false
         glow.backgroundColor = .clear
         glow.hasShadow = false
         glow.ignoresMouseEvents = true
         glow.level = .statusBar
         glow.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-        glow.contentView = Self.fixedHost(EdgeGlowView(), size: screen.frame.size)
-        glow.setFrame(screen.frame, display: false)
-        glow.orderFrontRegardless()
         glowWindow = glow
 
         // Small card in the top-right corner. Non-activating, so it never steals focus.
@@ -62,10 +58,7 @@ final class BreakPresenter {
                                  autoStartAt: Date().addingTimeInterval(autoStartAfter), autoStartAfter: autoStartAfter,
                                  onStart: onStart, onSnooze: onSnooze, onSkip: onSkip)
         let host = NSHostingView(rootView: card)
-        let size = host.fittingSize
-        let visible = screen.visibleFrame
-        let origin = NSPoint(x: visible.maxX - size.width - 16, y: visible.maxY - size.height - 12)
-        let panel = NSPanel(contentRect: NSRect(origin: origin, size: size),
+        let panel = NSPanel(contentRect: NSRect(origin: .zero, size: host.fittingSize),
                             styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.isOpaque = false
         panel.backgroundColor = .clear
@@ -77,14 +70,34 @@ final class BreakPresenter {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         panel.contentView = host
         panel.alphaValue = 0
+        cardPanel = panel
+
+        nudgeDisplay = Self.displayID(Self.activeScreen)
+        placeNudge()
+        glow.orderFrontRegardless()
         panel.orderFrontRegardless()
         NSAnimationContext.runAnimationGroup { $0.duration = 0.4; panel.animator().alphaValue = 1 }
-        cardPanel = panel
+    }
+
+    /// Puts the glow and card on the nudge's display, or on the mouse's display if that one is gone.
+    private func placeNudge() {
+        guard let panel = cardPanel, !NSScreen.screens.isEmpty else { return }
+        let screen = NSScreen.screens.first { Self.displayID($0) == nudgeDisplay } ?? Self.activeScreen
+        nudgeDisplay = Self.displayID(screen)
+
+        if let glow = glowWindow {
+            glow.contentView = Self.fixedHost(EdgeGlowView(), size: screen.frame.size)
+            glow.setFrame(screen.frame, display: true)
+        }
+        let size = panel.frame.size
+        let visible = screen.visibleFrame
+        panel.setFrameOrigin(NSPoint(x: visible.maxX - size.width - 16, y: visible.maxY - size.height - 12))
     }
 
     func dismissNudge() {
         glowWindow?.orderOut(nil)
         glowWindow = nil
+        nudgeDisplay = nil
         if let panel = cardPanel {
             cardPanel = nil
             NSAnimationContext.runAnimationGroup({ $0.duration = 0.25; panel.animator().alphaValue = 0 },
@@ -104,8 +117,31 @@ final class BreakPresenter {
         session.onSkip = onSkip
         self.session = session
 
-        let main = Self.activeScreen
-        for screen in NSScreen.screens {
+        breakDisplay = Self.displayID(Self.activeScreen)
+        layoutOverlay(fadeIn: true)
+
+        // Take keyboard focus so Esc / Return work; give it back afterwards.
+        let front = NSWorkspace.shared.frontmostApplication
+        if front?.processIdentifier != getpid() { previousApp = front }
+        NSApp.activate(ignoringOtherApps: true)
+        installKeyMonitor()
+        session.start()
+    }
+
+    /// Creates one window per connected display: the exercise on `breakDisplay`,
+    /// a dimmed background on the others. Replaces any existing overlay windows.
+    private func layoutOverlay(fadeIn: Bool) {
+        guard let session else { return }
+        for w in overlayWindows { w.orderOut(nil) }
+        overlayWindows = []
+
+        let screens = NSScreen.screens
+        guard !screens.isEmpty else { return }
+        // Keep the exercise where it was; if that display is gone, move it to where the mouse is.
+        let main = screens.first { Self.displayID($0) == breakDisplay } ?? Self.activeScreen
+        breakDisplay = Self.displayID(main)
+
+        for screen in screens {
             let w = KeyWindow(contentRect: screen.frame, styleMask: .borderless, backing: .buffered, defer: false)
             w.isOpaque = false
             w.backgroundColor = .clear
@@ -118,24 +154,44 @@ final class BreakPresenter {
                 w.contentView = Self.fixedHost(BreakBackground().ignoresSafeArea(), size: screen.frame.size)
             }
             w.setFrame(screen.frame, display: false)
-            w.alphaValue = 0
+            w.alphaValue = fadeIn ? 0 : 1
             w.orderFrontRegardless()
             overlayWindows.append(w)
-            NSAnimationContext.runAnimationGroup { $0.duration = 0.6; w.animator().alphaValue = 1 }
+            if fadeIn {
+                NSAnimationContext.runAnimationGroup { $0.duration = 0.6; w.animator().alphaValue = 1 }
+            }
             if screen == main { w.makeKey() }
         }
+    }
 
-        // Take keyboard focus so Esc / Return work; give it back afterwards.
-        let front = NSWorkspace.shared.frontmostApplication
-        if front?.processIdentifier != getpid() { previousApp = front }
-        NSApp.activate(ignoringOtherApps: true)
-        installKeyMonitor()
-        session.start()
+    // MARK: Display changes
+
+    private var breakDisplay: CGDirectDisplayID?
+    private var nudgeDisplay: CGDirectDisplayID?
+    private var screenObserver: NSObjectProtocol?
+
+    init() {
+        screenObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.screensChanged() }
+        }
+    }
+
+    /// A display was connected, disconnected, rearranged or changed resolution.
+    func screensChanged() {
+        if session != nil { layoutOverlay(fadeIn: false) }
+        if cardPanel != nil { placeNudge() }
+    }
+
+    private static func displayID(_ screen: NSScreen) -> CGDirectDisplayID? {
+        screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
     }
 
     func dismissBreak() {
         session?.stop()
         session = nil
+        breakDisplay = nil
         escTimer?.invalidate()
         escTimer = nil
         if let m = keyMonitor { NSEvent.removeMonitor(m); keyMonitor = nil }

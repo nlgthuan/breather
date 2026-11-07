@@ -32,6 +32,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let i = args.firstIndex(of: "--break"), i + 1 < args.count, let kind = BreakKind(rawValue: args[i + 1]) {
                 Scheduler.shared.takeBreakNow(kind)
             }
+            // Testing aid: pretend a display was plugged in or out 3 seconds after launch.
+            if args.contains("--simulate-display-change") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    NotificationCenter.default.post(name: NSApplication.didChangeScreenParametersNotification, object: NSApp)
+                }
+            }
         }
     }
 }
