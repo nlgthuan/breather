@@ -32,9 +32,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let i = args.firstIndex(of: "--break"), i + 1 < args.count, let kind = BreakKind(rawValue: args[i + 1]) {
                 Scheduler.shared.takeBreakNow(kind)
             }
-            // Testing aid: `--nudge eyes` shows the reminder card immediately.
-            if let i = args.firstIndex(of: "--nudge"), i + 1 < args.count, let kind = BreakKind(rawValue: args[i + 1]) {
-                Scheduler.shared.nudgeNow(kind)
+            // Testing aid: `--auto-break eyes` starts a break as if the schedule had (so Later is offered).
+            if let i = args.firstIndex(of: "--auto-break"), i + 1 < args.count, let kind = BreakKind(rawValue: args[i + 1]) {
+                Scheduler.shared.startScheduledBreakNow(kind)
             }
             // Testing aid: pretend a display was plugged in or out 3 seconds after launch.
             if args.contains("--simulate-display-change") {

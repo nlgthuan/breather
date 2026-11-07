@@ -1,13 +1,12 @@
 import AppKit
 
 /// The heart of the app: counts active work time per break kind and decides
-/// when (and how firmly) to remind.
+/// when to start a break.
 ///
 /// Flow for a due break:
 ///   counting → waiting (for a call / full screen to end, and a pause in typing)
-///            → nudging (edge glow + small card)
-///            → in break (full-screen overlay), either because the user pressed
-///              Start or because the nudge was ignored.
+///            → in break (the notch island opens and takes keyboard focus).
+/// There is no "start?" step: the break simply begins, and Later is always one key away.
 @MainActor
 final class Scheduler: ObservableObject {
     static let shared = Scheduler()
@@ -25,9 +24,8 @@ final class Scheduler: ObservableObject {
     // Tunables (seconds).
     static let pauseIdle: TimeInterval = 120      // idle this long: stop counting
     static let resetIdle: TimeInterval = 300      // idle/away this long: counts as a natural break
-    static let typingPause: TimeInterval = 2      // wait for a short pause in typing…
-    static let maxWaitForPause: TimeInterval = 45 // …but not forever
-    static let nudgeTimeout: TimeInterval = 45    // ignored nudge becomes an overlay
+    static let typingPause: TimeInterval = 2      // the island takes focus, so wait for a pause in typing…
+    static let maxWaitForPause: TimeInterval = 90 // …but not forever
     static let snoozeLength: TimeInterval = 300
     static let maxSnoozes = 2
     static let mergeWindow: TimeInterval = 300    // breaks due within 5 min are combined
@@ -35,7 +33,6 @@ final class Scheduler: ObservableObject {
     private enum Phase {
         case counting
         case waiting(Set<BreakKind>, since: Date)
-        case nudging(Set<BreakKind>, since: Date)
         case inBreak(Set<BreakKind>)
     }
 
@@ -84,14 +81,13 @@ final class Scheduler: ObservableObject {
 
     func takeBreakNow(_ kind: BreakKind) {
         if case .inBreak = phase { return }
-        presenter.dismissNudge()
-        begin([kind], allowSnooze: false)
+        begin([kind], automatic: false)
     }
 
-    /// Testing aid: show the reminder card for `kind` right away.
-    func nudgeNow(_ kind: BreakKind) {
+    /// Testing aid: start a break exactly as the schedule would.
+    func startScheduledBreakNow(_ kind: BreakKind) {
         if case .inBreak = phase { return }
-        nudge([kind])
+        begin([kind], automatic: true)
     }
 
     func pause(for duration: TimeInterval) {
@@ -106,7 +102,6 @@ final class Scheduler: ObservableObject {
 
     private func pause(until date: Date) {
         pausedUntil = date
-        if case .nudging = phase { presenter.dismissNudge() }
         if case .inBreak = phase {} else { phase = .counting }
         setStatus(.paused(until: date))
     }
@@ -132,7 +127,6 @@ final class Scheduler: ObservableObject {
         }
 
         if !prefs.isWithinWorkHours(now) {
-            if case .nudging = phase { presenter.dismissNudge() }
             phase = .counting
             setStatus(.outsideHours)
             return
@@ -166,25 +160,7 @@ final class Scheduler: ObservableObject {
             }
             setStatus(.running)
             if idle >= Self.typingPause || now.timeIntervalSince(since) >= Self.maxWaitForPause {
-                nudge(merge(kinds))
-            }
-
-        case .nudging(let kinds, let since):
-            if prefs.holdDuringCalls, let reason = BusyDetector.busyReason() {
-                presenter.dismissNudge()
-                phase = .waiting(kinds, since: now)
-                setStatus(.holding(reason))
-                return
-            }
-            if presenter.isNudgeHovered {
-                // Pointer over the card: hold the countdown.
-                phase = .nudging(kinds, since: since.addingTimeInterval(dt))
-                presenter.delayNudge(by: dt)
-                return
-            }
-            if now.timeIntervalSince(since) >= Self.nudgeTimeout {
-                presenter.dismissNudge()
-                begin(kinds, allowSnooze: true)
+                begin(merge(kinds), automatic: true)
             }
 
         case .inBreak:
@@ -209,30 +185,17 @@ final class Scheduler: ObservableObject {
 
     // MARK: Break lifecycle
 
-    private func nudge(_ kinds: Set<BreakKind>) {
-        phase = .nudging(kinds, since: Date())
-        if prefs.soundEnabled { Sounds.nudge() }
-        presenter.showNudge(
-            kinds: kinds.sorted(),
-            canSnooze: snoozeCount < Self.maxSnoozes,
-            canSkip: !prefs.strictMode,
-            autoStartAfter: Self.nudgeTimeout,
-            onStart: { [weak self] in
-                self?.presenter.dismissNudge()
-                self?.begin(kinds, allowSnooze: true)
-            },
-            onSnooze: { [weak self] in self?.snooze() },
-            onSkip: { [weak self] in self?.finish(kinds, taken: false) })
-    }
-
-    private func begin(_ kinds: Set<BreakKind>, allowSnooze: Bool) {
+    /// `automatic`: started by the schedule (Later is offered, a soft chime plays),
+    /// as opposed to taken by hand from the menu.
+    private func begin(_ kinds: Set<BreakKind>, automatic: Bool) {
         phase = .inBreak(kinds)
         setStatus(.onBreak)
+        if automatic && prefs.soundEnabled { Sounds.start() }
         presenter.showBreak(
             kinds: kinds.sorted(),
             pattern: prefs.breathingPattern,
             strict: prefs.strictMode,
-            canSnooze: allowSnooze && snoozeCount < Self.maxSnoozes,
+            canSnooze: automatic && snoozeCount < Self.maxSnoozes,
             sound: prefs.soundEnabled,
             onDone: { [weak self] in self?.finish(kinds, taken: true) },
             onSnooze: { [weak self] in self?.snooze() },
@@ -240,7 +203,6 @@ final class Scheduler: ObservableObject {
     }
 
     private func finish(_ kinds: Set<BreakKind>, taken: Bool) {
-        presenter.dismissNudge()
         presenter.dismissBreak()
         var reset = kinds
         if kinds.contains(.stretch) { reset.insert(.eyes) }
@@ -254,7 +216,6 @@ final class Scheduler: ObservableObject {
     }
 
     private func snooze() {
-        presenter.dismissNudge()
         presenter.dismissBreak()
         snoozeCount += 1
         snoozeUntil = Date().addingTimeInterval(Self.snoozeLength)
@@ -266,7 +227,6 @@ final class Scheduler: ObservableObject {
     /// The user was away long enough to have rested: start every timer over.
     private func naturalBreak() {
         if case .inBreak = phase { return }
-        if case .nudging = phase { presenter.dismissNudge() }
         elapsed = [:]
         snoozeUntil = nil
         snoozeCount = 0
@@ -276,7 +236,7 @@ final class Scheduler: ObservableObject {
 }
 
 enum Sounds {
-    @MainActor static func nudge() { play("Glass", volume: 0.25) }
+    @MainActor static func start() { play("Glass", volume: 0.25) }
     @MainActor static func step() { play("Tink", volume: 0.3) }
     @MainActor static func done() { play("Purr", volume: 0.35) }
 
