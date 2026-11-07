@@ -8,10 +8,10 @@ enum Island {
 }
 
 enum IslandMetrics {
-    static let ear: CGFloat = 14          // the concave curves where the island meets the top edge
-    static let width: CGFloat = 460       // open island, including ears
-    static let breakHeight: CGFloat = 132 // below the menu bar
-    static let doneHeight: CGFloat = 70
+    static let ear: CGFloat = 6           // the small concave fillets where the notch meets the top edge
+    static let width: CGFloat = 640       // open island, including ears
+    static let breakHeight: CGFloat = 68  // below the menu bar: one row
+    static let doneHeight: CGFloat = 68
     static let glow: CGFloat = 30         // room around the island for its glow
     static var windowSize: CGSize { CGSize(width: width + glow * 2, height: 40 + breakHeight + glow) }
 }
@@ -28,16 +28,16 @@ struct NotchShape: Shape {
     }
 
     func path(in r: CGRect) -> Path {
-        let br = min(bottomRadius, (r.height - ear) / 2, (r.width - 2 * ear) / 2)
+        let br = max(0, min(bottomRadius, r.height - ear, (r.width - 2 * ear) / 2))
+        let left = r.minX + ear, right = r.maxX - ear
         var p = Path()
         p.move(to: CGPoint(x: r.minX, y: r.minY))
-        p.addQuadCurve(to: CGPoint(x: r.minX + ear, y: r.minY + ear), control: CGPoint(x: r.minX + ear, y: r.minY))
-        p.addLine(to: CGPoint(x: r.minX + ear, y: r.maxY - br))
-        p.addQuadCurve(to: CGPoint(x: r.minX + ear + br, y: r.maxY), control: CGPoint(x: r.minX + ear, y: r.maxY))
-        p.addLine(to: CGPoint(x: r.maxX - ear - br, y: r.maxY))
-        p.addQuadCurve(to: CGPoint(x: r.maxX - ear, y: r.maxY - br), control: CGPoint(x: r.maxX - ear, y: r.maxY))
-        p.addLine(to: CGPoint(x: r.maxX - ear, y: r.minY + ear))
-        p.addQuadCurve(to: CGPoint(x: r.maxX, y: r.minY), control: CGPoint(x: r.maxX - ear, y: r.minY))
+        // Circular fillets (true arcs, like the notch's), then the rounded bottom.
+        p.addArc(tangent1End: CGPoint(x: left, y: r.minY), tangent2End: CGPoint(x: left, y: r.maxY), radius: ear)
+        p.addArc(tangent1End: CGPoint(x: left, y: r.maxY), tangent2End: CGPoint(x: right, y: r.maxY), radius: br)
+        p.addArc(tangent1End: CGPoint(x: right, y: r.maxY), tangent2End: CGPoint(x: right, y: r.minY), radius: br)
+        p.addArc(tangent1End: CGPoint(x: right, y: r.minY), tangent2End: CGPoint(x: r.maxX, y: r.minY), radius: ear)
+        p.addLine(to: CGPoint(x: r.maxX, y: r.minY))
         p.closeSubpath()
         return p
     }
@@ -52,7 +52,7 @@ struct IslandView: View {
         let open = model.expanded
         let width = open ? IslandMetrics.width : g.notchWidth + IslandMetrics.ear * 2
         let height = g.barHeight + (open ? (session.isComplete ? IslandMetrics.doneHeight : IslandMetrics.breakHeight) : 0)
-        let shape = NotchShape(bottomRadius: open ? 26 : 10)
+        let shape = NotchShape(bottomRadius: open ? 24 : 9)
         let glow = IslandMetrics.glow
 
         TimelineView(.animation) { ctx in
@@ -65,19 +65,19 @@ struct IslandView: View {
                 // so the top edge (where the island meets the screen) stays clean.
                 ZStack {
                     shape
-                        .stroke(Island.mint, lineWidth: 5)
-                        .blur(radius: 10)
-                        .opacity(0.4 + 0.45 * pulse)
+                        .stroke(Island.mint, lineWidth: 6)
+                        .blur(radius: 9)
+                        .opacity(0.5 + 0.45 * pulse)
                     shape
-                        .fill(Island.mint.opacity(0.18 + 0.2 * pulse))
-                        .blur(radius: 18)
+                        .fill(Island.mint.opacity(0.25 + 0.25 * pulse))
+                        .blur(radius: 16)
                 }
                 .frame(width: width, height: height)
                 .padding(glow)
                 .mask {
                     VStack(spacing: 0) {
-                        Color.clear.frame(height: glow + g.barHeight)
-                        LinearGradient(colors: [.clear, .white], startPoint: .top, endPoint: .bottom).frame(height: 24)
+                        Color.clear.frame(height: glow + g.barHeight * 0.6)
+                        LinearGradient(colors: [.clear, .white], startPoint: .top, endPoint: .bottom).frame(height: 18)
                         Color.white
                     }
                 }
@@ -89,8 +89,8 @@ struct IslandView: View {
                     .stroke(Island.mint.opacity(0.3 + 0.3 * pulse), lineWidth: 1)
                     .mask {
                         VStack(spacing: 0) {
-                            Color.clear.frame(height: g.barHeight)
-                            LinearGradient(colors: [.clear, .white], startPoint: .top, endPoint: .bottom).frame(height: 24)
+                            Color.clear.frame(height: g.barHeight * 0.6)
+                            LinearGradient(colors: [.clear, .white], startPoint: .top, endPoint: .bottom).frame(height: 18)
                             Color.white
                         }
                     }
@@ -103,9 +103,9 @@ struct IslandView: View {
                         BreakContent(session: session, t: t, now: ctx.date)
                     }
                 }
-                .padding(.top, g.barHeight + 8)
+                .padding(.top, g.barHeight + 4)
                 .padding(.horizontal, IslandMetrics.ear + 16)
-                .padding(.bottom, 14)
+                .padding(.bottom, 12)
                 .frame(width: width, height: height, alignment: .top)
                 .opacity(open ? 1 : 0)
                 .animation(.easeOut(duration: 0.2).delay(open ? 0.15 : 0), value: open)
@@ -127,25 +127,22 @@ private struct BreakContent: View {
 
     var body: some View {
         let step = session.step
-        VStack(spacing: 12) {
-            HStack(spacing: 14) {
-                Orb(step: step, t: t, fraction: t / step.duration)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(caption(step))
-                        .font(Theme.font(10, .semibold))
-                        .kerning(0.9)
-                        .textCase(.uppercase)
-                        .foregroundStyle(Island.mint)
-                    Text(title(step))
-                        .font(Theme.font(18, .medium))
-                    Text(detail(step))
-                        .font(Theme.font(12.5))
-                        .foregroundStyle(Island.text2)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 0)
+        HStack(spacing: 12) {
+            Orb(step: step, t: t, fraction: t / step.duration)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(caption(step))
+                    .font(Theme.font(9.5, .semibold))
+                    .kerning(0.8)
+                    .textCase(.uppercase)
+                    .foregroundStyle(Island.mint)
+                Text(title(step))
+                    .font(Theme.font(16, .medium))
+                Text(detail(step))
+                    .font(Theme.font(12))
+                    .foregroundStyle(Island.text2)
             }
+            .lineLimit(1)
+            Spacer(minLength: 8)
             KeyBar(session: session, now: now)
         }
     }
@@ -171,12 +168,12 @@ private struct BreakContent: View {
         switch step {
         case .eyes:
             t < BreakStep.eyesLookAway
-                ? "Look at something about 6 m away." + (session.sound ? " A chime means blink." : "")
+                ? (session.sound ? "About 6 m away. A chime means blink." : "Something about 6 m away.")
                 : "Ten slow, gentle blinks."
         case .breathe(let p):
-            p == .box ? "Follow the circle: in 4, hold 4, out 4, hold 4." : "Follow the circle: in for 4, out for 6."
+            p == .box ? "In 4, hold 4, out 4, hold 4." : "In for 4, out for 6."
         case .stretch:
-            "Stand up, roll your shoulders, walk a little."
+            "Stand up, roll your shoulders."
         }
     }
 }
@@ -189,32 +186,32 @@ private struct Orb: View {
 
     var body: some View {
         ZStack {
-            Circle().stroke(.white.opacity(0.14), lineWidth: 3)
+            Circle().stroke(.white.opacity(0.14), lineWidth: 2.5)
             Circle()
                 .trim(from: 0, to: max(0.003, min(1, fraction)))
-                .stroke(Island.mint, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .stroke(Island.mint, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
                 .rotationEffect(.degrees(-90))
             switch step {
             case .breathe(let p):
                 Circle()
                     .fill(RadialGradient(colors: [Island.mint.opacity(0.8), Island.mint.opacity(0.2)],
-                                         center: .center, startRadius: 0, endRadius: 24))
-                    .frame(width: 48, height: 48)
+                                         center: .center, startRadius: 0, endRadius: 18))
+                    .frame(width: 36, height: 36)
                     .scaleEffect(Breath.scale(p, t: t))
             default:
-                VStack(spacing: 1) {
+                VStack(spacing: 0) {
                     Image(systemName: symbol)
-                        .font(.system(size: 17, weight: .regular))
+                        .font(.system(size: 13, weight: .medium))
                         .contentTransition(.symbolEffect(.replace))
                     Text(timeLeft)
-                        .font(Theme.font(11, .semibold).monospacedDigit())
+                        .font(Theme.font(10, .semibold).monospacedDigit())
                 }
                 .foregroundStyle(Island.mint)
-                .frame(width: 54, height: 54)
+                .frame(width: 40, height: 40)
                 .background(Circle().fill(Island.mint.opacity(0.14)))
             }
         }
-        .frame(width: 66, height: 66)
+        .frame(width: 48, height: 48)
     }
 
     private var symbol: String {
@@ -270,12 +267,12 @@ private struct CompleteRow: View {
         let left = session.completedAt.map { max(1, Int(ceil(BreakSession.autoCloseAfter - now.timeIntervalSince($0)))) } ?? 0
         HStack(spacing: 12) {
             Image(systemName: "checkmark")
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Island.mint)
-                .frame(width: 42, height: 42)
+                .frame(width: 46, height: 46)
                 .background(Circle().fill(Island.mint.opacity(0.16)))
                 .overlay(Circle().stroke(Island.mint, lineWidth: 2.5))
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text("Nice work").font(Theme.font(16, .medium))
                 Text("\(today.taken + 1) of \(today.offered + 1) today · closing in \(left)s")
                     .font(Theme.font(12))
@@ -295,19 +292,21 @@ private struct KeyBar: View {
     let now: Date
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             if session.canSnooze {
-                KeyButton(label: "Later", key: "L", action: session.snooze)
+                KeyButton(label: "Later", key: "L", fill: false, action: session.snooze)
             }
             if session.strict {
                 strictExit
             } else {
-                KeyButton(label: "Skip", key: "esc", action: session.skip)
+                KeyButton(label: "Skip", key: "esc", fill: false, action: session.skip)
             }
             if session.canFinishNow {
-                KeyButton(label: session.isLastStep ? "Done" : "Next", key: "↩", prominent: true, action: session.next)
+                KeyButton(label: session.isLastStep ? "Done" : "Next", key: "↩", prominent: true, fill: false,
+                          action: session.next)
             }
         }
+        .fixedSize()
     }
 
     private var strictExit: some View {
@@ -316,7 +315,8 @@ private struct KeyBar: View {
             Text("Hold to exit").font(Theme.font(13, .medium))
             Keycap(key: "esc", prominent: false)
         }
-        .frame(maxWidth: .infinity, minHeight: 32)
+        .padding(.horizontal, 14)
+        .frame(minHeight: 32)
         .foregroundStyle(.white.opacity(0.85))
         .background(Capsule().fill(.white.opacity(0.1)))
         .background(alignment: .leading) {
