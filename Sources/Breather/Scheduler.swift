@@ -61,6 +61,12 @@ final class Scheduler: ObservableObject {
         }
     }
 
+    /// Time until the next break of this kind is due, or nil if it's turned off.
+    func timeUntil(_ kind: BreakKind) -> TimeInterval? {
+        guard prefs.isEnabled(kind) else { return nil }
+        return max(0, prefs.interval(kind) - elapsed[kind, default: 0])
+    }
+
     func start() {
         activity.onReturn = { [weak self] awayFor in
             if awayFor >= Self.resetIdle { self?.naturalBreak() }
@@ -80,6 +86,12 @@ final class Scheduler: ObservableObject {
         if case .inBreak = phase { return }
         presenter.dismissNudge()
         begin([kind], allowSnooze: false)
+    }
+
+    /// Testing aid: show the reminder card for `kind` right away.
+    func nudgeNow(_ kind: BreakKind) {
+        if case .inBreak = phase { return }
+        nudge([kind])
     }
 
     func pause(for duration: TimeInterval) {
@@ -162,6 +174,12 @@ final class Scheduler: ObservableObject {
                 presenter.dismissNudge()
                 phase = .waiting(kinds, since: now)
                 setStatus(.holding(reason))
+                return
+            }
+            if presenter.isNudgeHovered {
+                // Pointer over the card: hold the countdown.
+                phase = .nudging(kinds, since: since.addingTimeInterval(dt))
+                presenter.delayNudge(by: dt)
                 return
             }
             if now.timeIntervalSince(since) >= Self.nudgeTimeout {

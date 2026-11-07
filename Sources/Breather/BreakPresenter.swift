@@ -54,8 +54,9 @@ final class BreakPresenter {
         glowWindow = glow
 
         // Small card in the top-right corner. Non-activating, so it never steals focus.
-        let card = NudgeCardView(kinds: kinds, canSnooze: canSnooze, canSkip: canSkip,
-                                 autoStartAt: Date().addingTimeInterval(autoStartAfter), autoStartAfter: autoStartAfter,
+        let model = NudgeModel(autoStartAfter: autoStartAfter)
+        nudgeModel = model
+        let card = NudgeCardView(kinds: kinds, canSnooze: canSnooze, canSkip: canSkip, model: model,
                                  onStart: onStart, onSnooze: onSnooze, onSkip: onSkip)
         let host = NSHostingView(rootView: card)
         let panel = NSPanel(contentRect: NSRect(origin: .zero, size: host.fittingSize),
@@ -94,7 +95,18 @@ final class BreakPresenter {
         panel.setFrameOrigin(NSPoint(x: visible.maxX - size.width - 16, y: visible.maxY - size.height - 12))
     }
 
+    private var nudgeModel: NudgeModel?
+
+    /// True while the pointer is over the reminder card; the scheduler holds its countdown.
+    var isNudgeHovered: Bool { nudgeModel?.hovered ?? false }
+
+    /// Pushes the card's auto-start back by `seconds` (used while it's hovered).
+    func delayNudge(by seconds: TimeInterval) {
+        nudgeModel?.autoStartAt.addTimeInterval(seconds)
+    }
+
     func dismissNudge() {
+        nudgeModel = nil
         glowWindow?.orderOut(nil)
         glowWindow = nil
         nudgeDisplay = nil

@@ -9,12 +9,12 @@ struct BreatherApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MenuContent(scheduler: scheduler, stats: stats)
+            PopoverView(scheduler: scheduler, stats: stats)
         } label: {
             // Minimal: a filled leaf when Breather is looking after you, an outline when paused or off-hours.
             Image(systemName: scheduler.isActive ? "leaf.fill" : "leaf")
         }
-        .menuBarExtraStyle(.menu)
+        .menuBarExtraStyle(.window)
     }
 }
 
@@ -32,65 +32,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let i = args.firstIndex(of: "--break"), i + 1 < args.count, let kind = BreakKind(rawValue: args[i + 1]) {
                 Scheduler.shared.takeBreakNow(kind)
             }
+            // Testing aid: `--nudge eyes` shows the reminder card immediately.
+            if let i = args.firstIndex(of: "--nudge"), i + 1 < args.count, let kind = BreakKind(rawValue: args[i + 1]) {
+                Scheduler.shared.nudgeNow(kind)
+            }
             // Testing aid: pretend a display was plugged in or out 3 seconds after launch.
             if args.contains("--simulate-display-change") {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                     NotificationCenter.default.post(name: NSApplication.didChangeScreenParametersNotification, object: NSApp)
                 }
             }
-        }
-    }
-}
-
-private struct MenuContent: View {
-    @ObservedObject var scheduler: Scheduler
-    @ObservedObject var stats: Stats
-
-    var body: some View {
-        Text(statusText)
-
-        let today = stats.today
-        Text(today.offered == 0 ? "No breaks yet today" : "Breaks today: \(today.taken) of \(today.offered)")
-        if stats.streak >= 2 {
-            Text("\(stats.streak)-day streak")
-        }
-
-        Divider()
-
-        Menu("Take a break now") {
-            ForEach(BreakKind.allCases, id: \.self) { kind in
-                Button(kind.title) { scheduler.takeBreakNow(kind) }
-            }
-        }
-
-        if case .paused = scheduler.status {
-            Button("Resume") { scheduler.resume() }
-        } else {
-            Menu("Pause") {
-                Button("For 30 minutes") { scheduler.pause(for: 30 * 60) }
-                Button("For 1 hour") { scheduler.pause(for: 60 * 60) }
-                Button("For 2 hours") { scheduler.pause(for: 2 * 60 * 60) }
-                Button("Until tomorrow") { scheduler.pauseUntilTomorrow() }
-            }
-        }
-
-        Divider()
-
-        Button("Settings…") { SettingsWindow.show() }
-            .keyboardShortcut(",")
-        Button("Quit Breather") { NSApp.terminate(nil) }
-            .keyboardShortcut("q")
-    }
-
-    private var statusText: String {
-        switch scheduler.status {
-        case .running: "Breather is on"
-        case .onBreak: "On a break"
-        case .outsideHours: "Off — outside work hours"
-        case .holding(let reason): "Waiting — \(reason)"
-        case .paused(let until):
-            "Paused until " + until.formatted(date: Calendar.current.isDateInToday(until) ? .omitted : .abbreviated,
-                                              time: .shortened)
         }
     }
 }

@@ -3,9 +3,21 @@ import SwiftUI
 
 // MARK: Theme
 
+/// Soft, light, sage-green theme.
 enum Theme {
-    static let accent = Color(red: 0.56, green: 0.89, blue: 0.78)
-    static let ink = Color(red: 0.04, green: 0.08, blue: 0.09)
+    static let ink = Color(red: 0.12, green: 0.18, blue: 0.16)        // main text
+    static let text2 = Color(red: 0.29, green: 0.35, blue: 0.33)      // body text
+    static let text3 = Color(red: 0.36, green: 0.42, blue: 0.40)      // captions
+    static let control = Color(red: 0.18, green: 0.25, blue: 0.23)    // secondary button text
+    static let accent = Color(red: 0.23, green: 0.46, blue: 0.39)     // buttons, accent text
+    static let soft = Color(red: 0.49, green: 0.72, blue: 0.64)       // progress, decoration
+    static let frostTop = Color(red: 0.965, green: 0.976, blue: 0.961)
+    static let frostBottom = Color(red: 0.933, green: 0.953, blue: 0.937)
+    static let panel = Color(red: 0.98, green: 0.984, blue: 0.976)
+
+    static func font(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
+        .system(size: size, weight: weight, design: .rounded)
+    }
 }
 
 private struct SnapshotModeKey: EnvironmentKey { static let defaultValue = false }
@@ -17,14 +29,14 @@ extension EnvironmentValues {
     }
 }
 
-/// Live blur of whatever is behind the window.
+/// Live blur of whatever is behind the window, always in the light appearance.
 struct Backdrop: View {
     var material: NSVisualEffectView.Material
     @Environment(\.snapshotMode) private var snapshot
 
     var body: some View {
         if snapshot {
-            LinearGradient(colors: [Color(white: 0.22), Color(red: 0.18, green: 0.22, blue: 0.26)],
+            LinearGradient(colors: [Color(red: 0.62, green: 0.69, blue: 0.72), Color(red: 0.45, green: 0.53, blue: 0.58)],
                            startPoint: .topLeading, endPoint: .bottomTrailing)
         } else {
             BlurView(material: material)
@@ -39,26 +51,27 @@ private struct BlurView: NSViewRepresentable {
         v.material = material
         v.blendingMode = .behindWindow
         v.state = .active
+        v.appearance = NSAppearance(named: .aqua)
         return v
     }
     func updateNSView(_ v: NSVisualEffectView, context: Context) { v.material = material }
 }
 
-// MARK: Full-screen break
-
-/// Dimmed, lightly blurred desktop. macOS has no blur-strength setting, so the
-/// blur layer is made partly transparent to let some of the sharp desktop through.
+/// Your desktop at full blur under a light frosted tint: visible, but never readable
+/// through the break's text.
 struct BreakBackground: View {
-    static let blurAmount = 0.6   // 0 = no blur, 1 = full system blur
-    static let dim = 0.62
+    static let tint = 0.6   // 0 = plain blur, 1 = solid frost
 
     var body: some View {
         ZStack {
-            Backdrop(material: .fullScreenUI).opacity(Self.blurAmount)
-            Theme.ink.opacity(Self.dim)
+            Backdrop(material: .fullScreenUI)
+            LinearGradient(colors: [Theme.frostTop.opacity(Self.tint), Theme.frostBottom.opacity(Self.tint + 0.06)],
+                           startPoint: .top, endPoint: .bottom)
         }
     }
 }
+
+// MARK: Full-screen break
 
 struct BreakOverlayView: View {
     @ObservedObject var session: BreakSession
@@ -70,40 +83,63 @@ struct BreakOverlayView: View {
             TimelineView(.animation) { ctx in
                 let t = max(0, ctx.date.timeIntervalSince(session.stepStart))
                 VStack(spacing: 0) {
+                    if !session.isComplete {
+                        TopBar(session: session, t: t)
+                            .padding(.horizontal, 56)
+                            .padding(.top, 40)
+                    }
                     Spacer()
                     if session.isComplete {
-                        CompleteContent()
+                        CompleteContent(session: session, now: ctx.date)
                     } else {
                         StepContent(session: session, t: t)
                     }
                     Spacer()
                     HintBar(session: session, now: ctx.date)
-                        .padding(.bottom, 56)
+                        .padding(.bottom, 48)
                 }
                 .frame(maxWidth: .infinity)
             }
         }
         .ignoresSafeArea()
-        .foregroundStyle(.white)
-        .environment(\.colorScheme, .dark)
+        .foregroundStyle(Theme.ink)
+        .environment(\.colorScheme, .light)
     }
 }
 
-/// A thin progress ring with content inside.
-private struct Dial<Inner: View>: View {
-    let progress: Double
-    @ViewBuilder let inner: Inner
+private struct TopBar: View {
+    @ObservedObject var session: BreakSession
+    let t: TimeInterval
 
     var body: some View {
-        ZStack {
-            Circle().stroke(.white.opacity(0.08), lineWidth: 3)
-            Circle()
-                .trim(from: 0, to: max(0.002, min(1, progress)))
-                .stroke(Theme.accent, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-            inner
+        HStack {
+            Text(caption)
+                .font(Theme.font(14, .semibold))
+                .kerning(1.1)
+                .textCase(.uppercase)
+                .foregroundStyle(Theme.accent)
+            Spacer()
+            Text(info)
+                .font(Theme.font(14))
+                .foregroundStyle(Theme.text3)
         }
-        .frame(width: 196, height: 196)
+    }
+
+    private var caption: String {
+        switch session.step {
+        case .eyes: "Eyes · 20 seconds"
+        case .breathe(let p): p == .box ? "Breathe · box breathing" : "Breathe · longer exhale"
+        case .stretch: "Stretch · 2 minutes"
+        }
+    }
+
+    private var info: String {
+        if session.steps.count > 1 { return "Part \(session.index + 1) of \(session.steps.count)" }
+        switch session.step {
+        case .eyes: return t < BreakStep.eyesLookAway ? "Then 10 slow blinks" : "Almost done"
+        case .breathe(let p): return "Breath \(min(p.breaths, Int(t / p.cycle) + 1)) of \(p.breaths)"
+        case .stretch: return "Any movement counts"
+        }
     }
 }
 
@@ -115,160 +151,182 @@ private struct StepContent: View {
         let step = session.step
         let remaining = max(0, step.duration - t)
 
-        VStack(spacing: 36) {
-            Dial(progress: t / step.duration) { dialInner(step, remaining: remaining) }
-
-            VStack(spacing: 10) {
-                Text(caption(step))
-                    .font(.system(size: 11, weight: .semibold))
-                    .kerning(1.4)
-                    .textCase(.uppercase)
-                    .foregroundStyle(Theme.accent.opacity(0.8))
-                Text(title(step))
-                    .font(.system(size: 28, weight: .semibold, design: .rounded))
-                Text(detail(step, remaining: remaining))
-                    .font(.system(size: 15))
-                    .foregroundStyle(.white.opacity(0.6))
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(3)
-                    .frame(maxWidth: 400)
-                    .fixedSize(horizontal: false, vertical: true)
+        Group {
+            switch step {
+            case .eyes:
+                let lookingAway = t < BreakStep.eyesLookAway
+                FocusMessage(
+                    symbol: lookingAway ? "eye" : "eye.slash",
+                    title: lookingAway ? "Look away now" : "Blink slowly",
+                    detail: lookingAway
+                        ? "Find something about 6 metres away, like a window or a far wall. "
+                          + (session.sound ? "You'll hear a soft chime when it's time to blink." : "Come back in 20 seconds.")
+                        : "Close your eyes gently, then open them. Ten slow blinks.",
+                    fraction: t / step.duration,
+                    timeLabel: "\(Int(ceil(remaining)))s")
+            case .stretch:
+                FocusMessage(
+                    symbol: "figure.stand",
+                    title: "Time to stretch",
+                    detail: "Stand up, roll your shoulders, take a short walk. Whatever feels good.",
+                    fraction: t / step.duration,
+                    timeLabel: Self.minutes(remaining))
+            case .breathe(let pattern):
+                BreathingView(pattern: pattern, t: t)
             }
-
-            if session.steps.count > 1 {
-                StepDots(count: session.steps.count, current: session.index)
-            }
         }
-        .animation(.easeInOut(duration: 0.35), value: session.index)
+        .animation(.easeInOut(duration: 0.4), value: session.index)
     }
 
-    @ViewBuilder private func dialInner(_ step: BreakStep, remaining: TimeInterval) -> some View {
-        switch step {
-        case .breathe(let pattern):
-            BreathingDisc(pattern: pattern, t: t)
-        case .eyes:
-            SymbolCountdown(symbol: t < BreakStep.eyesLookAway ? "eye" : "eye.slash", remaining: remaining)
-        case .stretch(let s, _, _):
-            SymbolCountdown(symbol: s.symbol, remaining: remaining)
-        }
-    }
-
-    private func caption(_ step: BreakStep) -> String {
-        switch step {
-        case .eyes: "Eyes"
-        case .breathe: "Breathe"
-        case .stretch(_, let n, let total): "Stretch \(n) of \(total)"
-        }
-    }
-
-    private func title(_ step: BreakStep) -> String {
-        switch step {
-        case .eyes: t < BreakStep.eyesLookAway ? "Look far away" : "Blink slowly"
-        case .breathe(let p): BreathingDisc.phase(p, t: t).label
-        case .stretch(let s, _, _): s.title
-        }
-    }
-
-    private func detail(_ step: BreakStep, remaining: TimeInterval) -> String {
-        switch step {
-        case .eyes:
-            t < BreakStep.eyesLookAway
-                ? "Rest your eyes on something about 6 m (20 ft) away."
-                : "Ten slow, gentle blinks."
-        case .breathe:
-            "Follow the circle · \(Int(ceil(remaining)))s"
-        case .stretch(let s, _, _):
-            s.instruction
-        }
+    static func minutes(_ s: TimeInterval) -> String {
+        let total = Int(ceil(s))
+        return String(format: "%d:%02d", total / 60, total % 60)
     }
 }
 
-private struct SymbolCountdown: View {
+/// Icon, title, one line of guidance and a quiet progress bar.
+private struct FocusMessage: View {
     let symbol: String
-    let remaining: TimeInterval
+    let title: String
+    let detail: String
+    let fraction: Double
+    let timeLabel: String
 
     var body: some View {
-        VStack(spacing: 10) {
-            Image(systemName: symbol)
-                .font(.system(size: 40, weight: .light))
-                .foregroundStyle(Theme.accent)
-                .frame(height: 48)
-                .contentTransition(.symbolEffect(.replace))
-            Text("\(Int(ceil(remaining)))s")
-                .font(.system(size: 15, weight: .medium, design: .rounded).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.55))
-                .contentTransition(.numericText(countsDown: true))
+        VStack(spacing: 28) {
+            IconBadge(symbol: symbol, size: 148, iconSize: 60)
+            Text(title)
+                .font(Theme.font(54, .medium))
+            Text(detail)
+                .font(Theme.font(21))
+                .foregroundStyle(Theme.text2)
+                .multilineTextAlignment(.center)
+                .lineSpacing(4)
+                .frame(maxWidth: 580)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 14) {
+                LinearProgress(fraction: fraction).frame(width: 360)
+                Text(timeLabel)
+                    .font(Theme.font(16, .medium).monospacedDigit())
+                    .foregroundStyle(Theme.text2)
+                    .frame(minWidth: 44, alignment: .leading)
+            }
+            .padding(.top, 12)
         }
     }
 }
 
-private struct BreathingDisc: View {
+struct IconBadge: View {
+    let symbol: String
+    var size: CGFloat = 42
+    var iconSize: CGFloat = 18
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: iconSize, weight: .light))
+            .foregroundStyle(Theme.accent)
+            .frame(width: size, height: size)
+            .background(Circle().fill(Theme.soft.opacity(0.2)))
+            .contentTransition(.symbolEffect(.replace))
+    }
+}
+
+struct LinearProgress: View {
+    let fraction: Double
+    var body: some View {
+        GeometryReader { g in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Theme.ink.opacity(0.1))
+                Capsule().fill(Theme.soft)
+                    .frame(width: max(6, g.size.width * min(1, max(0, fraction))))
+            }
+        }
+        .frame(height: 6)
+    }
+}
+
+private struct BreathingView: View {
     let pattern: BreathingPattern
     let t: TimeInterval
 
-    struct Phase { let label: String; let length: Double; let from: Double; let to: Double; let local: Double }
+    private struct Phase { let label: String; let hint: String; let length: Double; let from: Double; let to: Double }
 
-    static func phase(_ pattern: BreathingPattern, t: TimeInterval) -> Phase {
-        let small = 0.38, big = 0.92
-        let phases: [(String, Double, Double, Double)] = switch pattern {
-        case .relaxed: [("Breathe in", 4, small, big), ("Breathe out", 6, big, small)]
-        case .box: [("Breathe in", 4, small, big), ("Hold", 4, big, big),
-                    ("Breathe out", 4, big, small), ("Hold", 4, small, small)]
+    private var phases: [Phase] {
+        let small = 0.55, big = 1.0
+        switch pattern {
+        case .relaxed:
+            return [.init(label: "Breathe in", hint: "through your nose", length: 4, from: small, to: big),
+                    .init(label: "Breathe out", hint: "slowly, all the way", length: 6, from: big, to: small)]
+        case .box:
+            return [.init(label: "Breathe in", hint: "through your nose", length: 4, from: small, to: big),
+                    .init(label: "Hold", hint: "gently", length: 4, from: big, to: big),
+                    .init(label: "Breathe out", hint: "slowly", length: 4, from: big, to: small),
+                    .init(label: "Hold", hint: "gently", length: 4, from: small, to: small)]
         }
-        let cycle = phases.reduce(0) { $0 + $1.1 }
-        var local = t.truncatingRemainder(dividingBy: cycle)
+    }
+
+    var body: some View {
+        var local = t.truncatingRemainder(dividingBy: pattern.cycle)
+        var current = phases[0]
         for p in phases {
-            if local < p.1 { return Phase(label: p.0, length: p.1, from: p.2, to: p.3, local: local) }
-            local -= p.1
+            if local < p.length { current = p; break }
+            local -= p.length
         }
-        let p = phases[0]
-        return Phase(label: p.0, length: p.1, from: p.2, to: p.3, local: 0)
-    }
-
-    var body: some View {
-        let p = Self.phase(pattern, t: t)
-        let progress = min(1, p.local / p.length)
+        let progress = min(1, local / current.length)
         let eased = 0.5 - 0.5 * cos(progress * .pi)
-        let scale = p.from + (p.to - p.from) * eased
-        Circle()
-            .fill(RadialGradient(colors: [Theme.accent.opacity(0.55), Theme.accent.opacity(0.12)],
-                                 center: .center, startRadius: 0, endRadius: 90))
-            .overlay(Circle().strokeBorder(Theme.accent.opacity(0.5), lineWidth: 1))
-            .frame(width: 180, height: 180)
-            .scaleEffect(scale)
-    }
-}
+        let scale = current.from + (current.to - current.from) * eased
+        let breath = min(pattern.breaths, Int(t / pattern.cycle) + 1)
 
-private struct StepDots: View {
-    let count: Int
-    let current: Int
-
-    var body: some View {
-        HStack(spacing: 6) {
-            ForEach(0..<count, id: \.self) { i in
-                Capsule()
-                    .fill(i <= current ? Theme.accent.opacity(i == current ? 1 : 0.5) : .white.opacity(0.15))
-                    .frame(width: i == current ? 18 : 6, height: 6)
+        return VStack(spacing: 40) {
+            ZStack {
+                Circle().strokeBorder(Theme.accent.opacity(0.16), lineWidth: 1)
+                    .frame(width: 420, height: 420)
+                Circle().strokeBorder(Theme.accent.opacity(0.2), style: StrokeStyle(lineWidth: 1, dash: [4, 6]))
+                    .frame(width: 280, height: 280)
+                Circle()
+                    .fill(RadialGradient(colors: [Theme.soft.opacity(0.5), Theme.soft.opacity(0.14)],
+                                         center: .center, startRadius: 0, endRadius: 170))
+                    .overlay(Circle().strokeBorder(Theme.accent.opacity(0.3), lineWidth: 1))
+                    .frame(width: 340, height: 340)
+                    .scaleEffect(scale)
+                VStack(spacing: 8) {
+                    Text(current.label).font(Theme.font(36, .medium))
+                    Text(current.hint).font(Theme.font(16)).foregroundStyle(Theme.text2)
+                }
             }
+            .frame(width: 420, height: 420)
+
+            HStack(spacing: 10) {
+                ForEach(1...pattern.breaths, id: \.self) { i in
+                    Circle()
+                        .fill(i < breath ? Theme.accent.opacity(0.45) : i == breath ? Theme.accent : Theme.ink.opacity(0.15))
+                        .frame(width: 10, height: 10)
+                        .background(Circle().fill(Theme.accent.opacity(i == breath ? 0.18 : 0)).padding(-4))
+                }
+            }
+            .accessibilityLabel("Breath \(breath) of \(pattern.breaths)")
+
+            Text(pattern == .box ? "In 4, hold 4, out 4, hold 4." : "In for 4, out for 6. Let your shoulders drop on each exhale.")
+                .font(Theme.font(17))
+                .foregroundStyle(Theme.text2)
         }
     }
 }
 
 private struct CompleteContent: View {
+    @ObservedObject var session: BreakSession
+    @ObservedObject private var stats = Stats.shared
+    let now: Date
+
     var body: some View {
-        VStack(spacing: 36) {
-            Dial(progress: 1) {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 44, weight: .light))
-                    .foregroundStyle(Theme.accent)
-            }
-            VStack(spacing: 10) {
-                Text("Nice work")
-                    .font(.system(size: 28, weight: .semibold, design: .rounded))
-                Text("Back to it, a little lighter.")
-                    .font(.system(size: 15))
-                    .foregroundStyle(.white.opacity(0.6))
-            }
+        // This break is recorded when the screen closes, so count it in now.
+        let today = stats.today
+        VStack(spacing: 26) {
+            IconBadge(symbol: "checkmark", size: 120, iconSize: 48)
+            Text("Nice work").font(Theme.font(48, .medium))
+            Text("That's \(today.taken + 1) of \(today.offered + 1) breaks today.")
+                .font(Theme.font(19))
+                .foregroundStyle(Theme.text2)
         }
     }
 }
@@ -281,42 +339,51 @@ private struct HintBar: View {
     let now: Date
 
     var body: some View {
-        HStack(spacing: 2) {
-            if session.isComplete {
-                KeyHint(label: "Close", key: "↩", prominent: true, action: session.done)
-            } else {
-                if session.canSnooze {
-                    KeyHint(label: "Later", key: "L", action: session.snooze)
-                }
-                if session.strict {
-                    strictExit
+        VStack(spacing: 12) {
+            HStack(spacing: 4) {
+                if session.isComplete {
+                    KeyHint(label: "Back to work", key: "↩", prominent: true, action: session.done)
                 } else {
-                    KeyHint(label: "Skip", key: "esc", action: session.skip)
-                }
-                if session.canFinishNow {
-                    KeyHint(label: session.isLastStep ? "Done" : "Next", key: "↩", prominent: true,
-                            action: session.next)
+                    if session.canSnooze {
+                        KeyHint(label: "Later", key: "L", action: session.snooze)
+                    }
+                    if session.strict {
+                        strictExit
+                    } else {
+                        KeyHint(label: "Skip", key: "esc", action: session.skip)
+                    }
+                    if session.canFinishNow {
+                        KeyHint(label: session.isLastStep ? "Done" : "Next", key: "↩", prominent: true,
+                                action: session.next)
+                    }
                 }
             }
+            .padding(5)
+            .background(Capsule().fill(.white.opacity(0.78)))
+            .overlay(Capsule().strokeBorder(Theme.ink.opacity(0.08)))
+            .shadow(color: Theme.ink.opacity(0.06), radius: 10, y: 6)
+
+            if session.isComplete, let c = session.completedAt {
+                let left = max(1, Int(ceil(BreakSession.autoCloseAfter - now.timeIntervalSince(c))))
+                Text("Closes on its own in \(left) second\(left == 1 ? "" : "s")")
+                    .font(Theme.font(14))
+                    .foregroundStyle(Theme.text3)
+            }
         }
-        .padding(4)
-        .background(Capsule().fill(.white.opacity(0.06)))
-        .overlay(Capsule().strokeBorder(.white.opacity(0.08)))
     }
 
     private var strictExit: some View {
         let held = session.escHoldStart.map { min(1, now.timeIntervalSince($0) / BreakPresenter.escHoldSeconds) } ?? 0
-        return HStack(spacing: 8) {
-            Text("Hold to exit")
-                .font(.system(size: 13, weight: .medium))
+        return HStack(spacing: 10) {
+            Text("Hold to exit").font(Theme.font(15, .medium))
             Keycap(key: "esc", prominent: false)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .foregroundStyle(.white.opacity(0.7))
+        .padding(.horizontal, 18)
+        .frame(minHeight: 44)
+        .foregroundStyle(Theme.control)
         .background(alignment: .leading) {
             GeometryReader { g in
-                Capsule().fill(.white.opacity(0.14)).frame(width: g.size.width * held)
+                Capsule().fill(Theme.ink.opacity(0.1)).frame(width: g.size.width * held)
             }
         }
         .clipShape(Capsule())
@@ -332,14 +399,14 @@ private struct KeyHint: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
-                Text(label).font(.system(size: 13, weight: .medium))
+            HStack(spacing: 10) {
+                Text(label).font(Theme.font(15, prominent ? .semibold : .medium))
                 Keycap(key: key, prominent: prominent)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .foregroundStyle(prominent ? Theme.ink : .white.opacity(0.85))
-            .background(Capsule().fill(prominent ? Theme.accent : .white.opacity(hover ? 0.1 : 0)))
+            .padding(.horizontal, prominent ? 20 : 18)
+            .frame(minHeight: 44)
+            .foregroundStyle(prominent ? Color.white : Theme.control)
+            .background(Capsule().fill(prominent ? Theme.accent : Theme.ink.opacity(hover ? 0.06 : 0)))
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -353,22 +420,38 @@ private struct Keycap: View {
 
     var body: some View {
         Text(key)
-            .font(.system(size: 11, weight: .semibold, design: .rounded))
-            .padding(.horizontal, 6)
+            .font(Theme.font(11, .semibold))
+            .lineLimit(1)
+            .fixedSize()
+            .foregroundStyle(prominent ? Color.white : Theme.text2)
+            .padding(.horizontal, 7)
             .frame(minWidth: 22, minHeight: 20)
             .background(RoundedRectangle(cornerRadius: 5, style: .continuous)
-                .fill(prominent ? Theme.ink.opacity(0.12) : .white.opacity(0.1)))
+                .fill(prominent ? Color.white.opacity(0.2) : Theme.ink.opacity(0.07)))
     }
 }
 
 // MARK: Nudge (gentle first reminder)
 
+/// Live state of the reminder card: when it starts on its own, and whether the
+/// pointer is over it (which holds the countdown).
+@MainActor
+final class NudgeModel: ObservableObject {
+    @Published var autoStartAt: Date
+    @Published var hovered = false
+    let total: TimeInterval
+
+    init(autoStartAfter: TimeInterval) {
+        total = autoStartAfter
+        autoStartAt = Date().addingTimeInterval(autoStartAfter)
+    }
+}
+
 struct NudgeCardView: View {
     let kinds: [BreakKind]
     let canSnooze: Bool
     let canSkip: Bool
-    let autoStartAt: Date
-    let autoStartAfter: TimeInterval
+    @ObservedObject var model: NudgeModel
     let onStart: () -> Void
     let onSnooze: () -> Void
     let onSkip: () -> Void
@@ -382,61 +465,60 @@ struct NudgeCardView: View {
         }
     }
 
-    private var subtitle: String {
-        switch kinds {
-        case [.eyes]: "Look away for 20 seconds"
-        case [.breathe]: "One minute of slow breathing"
-        case [.stretch]: "Two minutes to move"
-        default: kinds.map(\.title).joined(separator: " + ")
-        }
+    private var length: String {
+        let seconds = BreakStep.steps(for: kinds, pattern: Preferences.shared.breathingPattern)
+            .reduce(0) { $0 + $1.duration }
+        return seconds < 60 ? "\(Int(seconds)) seconds" : seconds < 90 ? "1 minute" : "About \(Int((seconds / 60).rounded())) minutes"
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Image(systemName: kinds.count == 1 ? kinds[0].symbol : "leaf")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(Theme.accent)
-                    .frame(width: 32, height: 32)
-                    .background(Circle().fill(Theme.accent.opacity(0.14)))
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(size: 13, weight: .semibold))
-                    Text(subtitle).font(.system(size: 12)).foregroundStyle(.white.opacity(0.55))
+        TimelineView(.periodic(from: .now, by: 0.2)) { ctx in
+            let left = max(0, model.autoStartAt.timeIntervalSince(ctx.date))
+            VStack(spacing: 0) {
+                HStack(spacing: 14) {
+                    IconBadge(symbol: kinds.count == 1 ? kinds[0].symbol : "leaf")
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(title).font(Theme.font(15, .semibold))
+                        Text(model.hovered ? "Waiting for you · won't start on its own"
+                                           : "\(length) · starts in \(Int(ceil(left)))s")
+                            .font(Theme.font(13))
+                            .foregroundStyle(Theme.text3)
+                    }
+                    .lineLimit(1)
+                    Spacer(minLength: 0)
                 }
-                .lineLimit(1)
+                .padding(.horizontal, 14)
+                .padding(.top, 14)
+                .padding(.bottom, 12)
 
-                Spacer(minLength: 10)
-
-                HStack(spacing: 2) {
-                    if canSkip { SmallButton(title: "Skip", action: onSkip) }
-                    if canSnooze { SmallButton(title: "Later", action: onSnooze) }
-                    SmallButton(title: "Start", prominent: true, action: onStart)
+                HStack(spacing: 6) {
+                    if canSkip { CardButton(title: "Skip", action: onSkip) }
+                    if canSnooze { CardButton(title: "In 5 min", action: onSnooze) }
+                    CardButton(title: "Start now", prominent: true, action: onStart)
                 }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 11)
+                .padding(.horizontal, 14)
+                .padding(.bottom, 14)
 
-            // Quietly shows when the break will start on its own.
-            TimelineView(.periodic(from: .now, by: 0.1)) { ctx in
-                let left = max(0, autoStartAt.timeIntervalSince(ctx.date)) / autoStartAfter
                 GeometryReader { g in
-                    Rectangle().fill(Theme.accent.opacity(0.6)).frame(width: g.size.width * left)
+                    Rectangle()
+                        .fill(Theme.soft.opacity(model.hovered ? 0.35 : 1))
+                        .frame(width: model.hovered ? g.size.width : g.size.width * left / model.total)
                 }
+                .frame(height: 3)
             }
-            .frame(height: 2)
         }
-        .frame(width: 400)
-        .background(Backdrop(material: .hudWindow))
-        .background(Theme.ink.opacity(0.35))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.white.opacity(0.1)))
-        .foregroundStyle(.white)
-        .environment(\.colorScheme, .dark)
+        .frame(width: 420)
+        .background(Theme.panel.opacity(0.97))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .strokeBorder(model.hovered ? Theme.accent.opacity(0.45) : Theme.ink.opacity(0.08)))
+        .foregroundStyle(Theme.ink)
+        .environment(\.colorScheme, .light)
+        .onHover { model.hovered = $0 }
     }
 }
 
-private struct SmallButton: View {
+private struct CardButton: View {
     let title: String
     var prominent = false
     let action: () -> Void
@@ -445,14 +527,14 @@ private struct SmallButton: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 12, weight: prominent ? .semibold : .medium))
+                .font(Theme.font(14, prominent ? .semibold : .medium))
                 .lineLimit(1)
                 .fixedSize()
-                .padding(.horizontal, 11)
-                .padding(.vertical, 6)
-                .foregroundStyle(prominent ? Theme.ink : .white.opacity(hover ? 0.95 : 0.65))
-                .background(Capsule().fill(prominent ? Theme.accent : .white.opacity(hover ? 0.1 : 0)))
-                .contentShape(Capsule())
+                .frame(maxWidth: .infinity, minHeight: 38)
+                .foregroundStyle(prominent ? Color.white : Theme.control)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(prominent ? Theme.accent : Theme.ink.opacity(hover ? 0.11 : 0.06)))
+                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
         .onHover { hover = $0 }
@@ -465,9 +547,9 @@ struct EdgeGlowView: View {
 
     var body: some View {
         RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .strokeBorder(Theme.accent, lineWidth: 2)
+            .strokeBorder(Theme.soft, lineWidth: 2)
             .blur(radius: 6)
-            .opacity(bright ? 0.5 : 0.1)
+            .opacity(bright ? 0.55 : 0.1)
             .ignoresSafeArea()
             .onAppear {
                 withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) { bright = true }

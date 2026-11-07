@@ -12,7 +12,7 @@ enum Snapshots {
 
         func session(_ kinds: [BreakKind], strict: Bool = false, step: Int = 0, at t: TimeInterval,
                      complete: Bool = false) -> BreakSession {
-            let s = BreakSession(kinds: kinds, pattern: .relaxed, strict: strict, canSnooze: true, sound: false)
+            let s = BreakSession(kinds: kinds, pattern: .relaxed, strict: strict, canSnooze: true, sound: true)
             s.preview(step: step, elapsed: t, complete: complete)
             return s
         }
@@ -23,7 +23,7 @@ enum Snapshots {
             if let size {
                 renderer = ImageRenderer(content: AnyView(content.frame(width: size.width, height: size.height)))
             } else {
-                renderer = ImageRenderer(content: AnyView(content.padding(40).background(Color(white: 0.3))))
+                renderer = ImageRenderer(content: AnyView(content.padding(40).background(Color(white: 0.45))))
             }
             renderer.scale = 2
             guard let cg = renderer.cgImage,
@@ -36,15 +36,20 @@ enum Snapshots {
 
         save("eyes", BreakOverlayView(session: session([.eyes], at: 7)), size: screen)
         save("eyes-blink", BreakOverlayView(session: session([.eyes], at: 24)), size: screen)
-        save("breathe", BreakOverlayView(session: session([.breathe], at: 2.5)), size: screen)
-        save("stretch", BreakOverlayView(session: session([.stretch], step: 1, at: 14)), size: screen)
+        save("breathe", BreakOverlayView(session: session([.breathe], at: 22)), size: screen)
+        save("stretch", BreakOverlayView(session: session([.stretch], at: 48)), size: screen)
         save("stretch-strict", BreakOverlayView(session: session([.stretch], strict: true, at: 30)), size: screen)
+        save("combined", BreakOverlayView(session: session([.eyes, .breathe], at: 5)), size: screen)
         save("complete", BreakOverlayView(session: session([.eyes], at: 0, complete: true)), size: screen)
-        save("nudge", NudgeCardView(kinds: [.eyes], canSnooze: true, canSkip: true,
-                                    autoStartAt: Date().addingTimeInterval(30), autoStartAfter: 45,
+
+        let model = NudgeModel(autoStartAfter: 45)
+        model.autoStartAt = Date().addingTimeInterval(28)
+        save("nudge", NudgeCardView(kinds: [.eyes], canSnooze: true, canSkip: true, model: model,
                                     onStart: {}, onSnooze: {}, onSkip: {}))
-        save("nudge-combined", NudgeCardView(kinds: [.eyes, .breathe], canSnooze: false, canSkip: true,
-                                             autoStartAt: Date().addingTimeInterval(10), autoStartAfter: 45,
-                                             onStart: {}, onSnooze: {}, onSkip: {}))
+        let hovered = NudgeModel(autoStartAfter: 45)
+        hovered.hovered = true
+        save("nudge-hover", NudgeCardView(kinds: [.eyes, .breathe], canSnooze: false, canSkip: true, model: hovered,
+                                          onStart: {}, onSnooze: {}, onSkip: {}))
+        save("popover", PopoverView(scheduler: .shared, stats: .shared))
     }
 }

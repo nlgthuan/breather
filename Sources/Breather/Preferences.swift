@@ -15,7 +15,7 @@ enum BreakKind: String, CaseIterable, Codable, Hashable, Comparable {
         switch self {
         case .eyes: "eye"
         case .breathe: "wind"
-        case .stretch: "figure.flexibility"
+        case .stretch: "figure.stand"
         }
     }
 
