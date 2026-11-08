@@ -54,6 +54,19 @@ enum MotionMode: String, CaseIterable, Identifiable {
     }
 }
 
+/// Light or dark for the menu bar panel (the break island is always dark).
+enum AppearanceMode: String, CaseIterable, Identifiable {
+    case system, light, dark
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .system: "Match system"
+        case .light: "Light"
+        case .dark: "Dark"
+        }
+    }
+}
+
 /// User settings, persisted in UserDefaults.
 @MainActor
 final class Preferences: ObservableObject {
@@ -74,6 +87,18 @@ final class Preferences: ObservableObject {
     @Published var soundEnabled: Bool { didSet { d.set(soundEnabled, forKey: "soundEnabled") } }
     @Published var holdDuringCalls: Bool { didSet { d.set(holdDuringCalls, forKey: "holdDuringCalls") } }
     @Published var motion: MotionMode { didSet { d.set(motion.rawValue, forKey: "motion") } }
+    @Published var appearance: AppearanceMode {
+        didSet { d.set(appearance.rawValue, forKey: "appearance"); applyAppearance() }
+    }
+
+    /// Sets the whole app's appearance; nil follows the system.
+    func applyAppearance() {
+        NSApp.appearance = switch appearance {
+        case .system: nil
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
+        }
+    }
 
     /// Whether to use reduced motion right now (the system's Reduce Motion, unless overridden).
     var reduceMotion: Bool {
@@ -117,6 +142,7 @@ final class Preferences: ObservableObject {
         soundEnabled = bool("soundEnabled", true)
         holdDuringCalls = bool("holdDuringCalls", true)
         motion = MotionMode(rawValue: d.string(forKey: "motion") ?? "") ?? .system
+        appearance = AppearanceMode(rawValue: d.string(forKey: "appearance") ?? "") ?? .system
         workHoursOnly = bool("workHoursOnly", false)
         workStart = int("workStart", 9 * 60)
         workEnd = int("workEnd", 18 * 60)

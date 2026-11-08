@@ -55,6 +55,26 @@ enum Snapshots {
         save("stretch-breathe-water", island(session([.stretch, .breathe, .hydrate, .eyes], at: 30)))
         save("complete", island(session([.eyes], at: 0, complete: true)))
         save("reduce-motion", island(session([.eyes], at: 7), reduceMotion: true))
+        // Native controls and scroll views only draw in a real window.
+        func saveInWindow<V: View>(_ name: String, _ view: V, dark: Bool) {
+            let host = NSHostingView(rootView: view)
+            host.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+            let size = host.fittingSize
+            let w = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: .borderless,
+                             backing: .buffered, defer: false)
+            w.contentView = host
+            host.frame = NSRect(origin: .zero, size: size)
+            host.layoutSubtreeIfNeeded()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+            guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return }
+            host.cacheDisplay(in: host.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: url.appendingPathComponent("\(name).png"))
+            print("wrote \(name).png")
+        }
+        for dark in [false, true] {
+            saveInWindow(dark ? "settings-dark" : "settings",
+                         SettingsPage(prefs: .shared) {}.padding(18).frame(width: PopoverView.width).background(Theme.panel), dark: dark)
+        }
         save("popover", PopoverView(scheduler: .shared, stats: .shared).padding(30).background(Color(white: 0.45)))
         save("popover-dark", PopoverView(scheduler: .shared, stats: .shared).padding(30).background(Color(white: 0.2))
             .environment(\.colorScheme, .dark))

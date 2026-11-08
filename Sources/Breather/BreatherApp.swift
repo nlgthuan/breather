@@ -20,17 +20,30 @@ struct BreatherApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Opening Breather again (Launchpad, Spotlight, Finder) while it's already running
-    /// shows Settings, so the click visibly does something. Left alone during a break.
+    /// opens its menu bar panel, so the click visibly does something. Left alone during a break.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         MainActor.assumeIsolated {
-            if Scheduler.shared.status != .onBreak { SettingsWindow.show() }
+            if Scheduler.shared.status != .onBreak { Self.openMenuBarPanel() }
         }
         return false
+    }
+
+    /// Clicks Breather's own menu bar icon.
+    @MainActor private static func openMenuBarPanel() {
+        func button(in view: NSView?) -> NSStatusBarButton? {
+            guard let view else { return nil }
+            if let b = view as? NSStatusBarButton { return b }
+            return view.subviews.lazy.compactMap { button(in: $0) }.first
+        }
+        for w in NSApp.windows where w.className.contains("StatusBar") {
+            if let b = button(in: w.contentView) { b.performClick(nil); return }
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         MainActor.assumeIsolated {
+            Preferences.shared.applyAppearance()
             let args = CommandLine.arguments
             if let i = args.firstIndex(of: "--snapshot"), i + 1 < args.count {
                 Snapshots.run(into: args[i + 1])

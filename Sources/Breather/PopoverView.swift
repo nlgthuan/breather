@@ -5,20 +5,33 @@ import SwiftUI
 struct PopoverView: View {
     @ObservedObject var scheduler: Scheduler
     @ObservedObject var stats: Stats
+    @State private var showingSettings = false
+    static let width: CGFloat = 352
 
     var body: some View {
-        // Refresh the "in N min" times while it's open.
-        TimelineView(.periodic(from: .now, by: 10)) { _ in
-            VStack(alignment: .leading, spacing: 16) {
-                header
-                today
-                comingUp
-                actions
+        Group {
+            if showingSettings {
+                SettingsPage(prefs: .shared) { show(settings: false) }
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            } else {
+                // Refresh the "in N min" times while it's open.
+                TimelineView(.periodic(from: .now, by: 10)) { _ in
+                    VStack(alignment: .leading, spacing: 16) {
+                        header
+                        today
+                        comingUp
+                        actions
+                    }
+                }
+                .transition(.move(edge: .leading).combined(with: .opacity))
             }
-            .padding(18)
-            .frame(width: 320)
         }
+        .padding(18)
+        .frame(width: PopoverView.width)
+        .clipped()
         .background(Theme.panel)
+        // Open on the main page next time.
+        .onDisappear { showingSettings = false }
         .foregroundStyle(Theme.ink)
     }
 
@@ -34,8 +47,7 @@ struct PopoverView: View {
                 .lineLimit(1)
             Spacer(minLength: 0)
             Button {
-                closePopover()
-                SettingsWindow.show()
+                show(settings: true)
             } label: {
                 Image(systemName: "gearshape")
                     .font(.system(size: 15))
@@ -86,8 +98,7 @@ struct PopoverView: View {
                     }
                 }
             }
-            Text("Always at least \(Int(Scheduler.gapMinutes)) min apart; breaks due together share one reminder. Click a row to take it now.")
-                .fixedSize(horizontal: false, vertical: true)
+            Text("Click a row to take that break now.")
                 .font(Theme.font(12))
                 .foregroundStyle(Theme.text3)
                 .padding(.horizontal, 6)
@@ -131,6 +142,13 @@ struct PopoverView: View {
         if !scheduler.isActive { return "paused" }
         let minutes = Int((seconds / 60).rounded(.up))
         return minutes <= 0 ? "now" : "in \(minutes) min"
+    }
+
+    private func show(settings: Bool) {
+        let reduce = Preferences.shared.reduceMotion
+        withAnimation(reduce ? .easeInOut(duration: 0.15) : .spring(response: 0.35, dampingFraction: 0.9)) {
+            showingSettings = settings
+        }
     }
 
     /// The popover is the key window while you click in it.
