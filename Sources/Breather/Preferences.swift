@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 enum BreakKind: String, CaseIterable, Codable, Hashable, Comparable {
@@ -39,6 +40,20 @@ enum BreathingPattern: String, CaseIterable, Identifiable {
     }
 }
 
+/// How much the island moves: springing out of the notch and a breathing glow,
+/// or a simple fade and a still glow.
+enum MotionMode: String, CaseIterable, Identifiable {
+    case system, full, reduced
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .system: "Match system"
+        case .full: "Full"
+        case .reduced: "Reduced"
+        }
+    }
+}
+
 /// User settings, persisted in UserDefaults.
 @MainActor
 final class Preferences: ObservableObject {
@@ -58,6 +73,16 @@ final class Preferences: ObservableObject {
     @Published var strictMode: Bool { didSet { d.set(strictMode, forKey: "strictMode") } }
     @Published var soundEnabled: Bool { didSet { d.set(soundEnabled, forKey: "soundEnabled") } }
     @Published var holdDuringCalls: Bool { didSet { d.set(holdDuringCalls, forKey: "holdDuringCalls") } }
+    @Published var motion: MotionMode { didSet { d.set(motion.rawValue, forKey: "motion") } }
+
+    /// Whether to use reduced motion right now (the system's Reduce Motion, unless overridden).
+    var reduceMotion: Bool {
+        switch motion {
+        case .system: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        case .full: false
+        case .reduced: true
+        }
+    }
 
     @Published var workHoursOnly: Bool { didSet { d.set(workHoursOnly, forKey: "workHoursOnly") } }
     /// Minutes after midnight.
@@ -78,17 +103,20 @@ final class Preferences: ObservableObject {
         func bool(_ k: String, _ def: Bool) -> Bool { d.object(forKey: k) as? Bool ?? def }
         func int(_ k: String, _ def: Int) -> Int { d.object(forKey: k) as? Int ?? def }
         eyesEnabled = bool("eyesEnabled", true)
-        eyesInterval = int("eyesInterval", 20)
+        // Multiples of 25 min, so reminders fall on one rhythm and those that
+        // land together share a card (e.g. stretch + water every 50 min).
+        eyesInterval = int("eyesInterval", 25)
         breatheEnabled = bool("breatheEnabled", true)
-        breatheInterval = int("breatheInterval", 45)
+        breatheInterval = int("breatheInterval", 75)
         stretchEnabled = bool("stretchEnabled", true)
-        stretchInterval = int("stretchInterval", 60)
+        stretchInterval = int("stretchInterval", 50)
         hydrateEnabled = bool("hydrateEnabled", true)
         hydrateInterval = int("hydrateInterval", 50)
         breathingPattern = BreathingPattern(rawValue: d.string(forKey: "breathingPattern") ?? "") ?? .relaxed
         strictMode = bool("strictMode", false)
         soundEnabled = bool("soundEnabled", true)
         holdDuringCalls = bool("holdDuringCalls", true)
+        motion = MotionMode(rawValue: d.string(forKey: "motion") ?? "") ?? .system
         workHoursOnly = bool("workHoursOnly", false)
         workStart = int("workStart", 9 * 60)
         workEnd = int("workEnd", 18 * 60)

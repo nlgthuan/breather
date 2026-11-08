@@ -36,8 +36,8 @@ struct NotchGeometry {
 final class IslandModel: ObservableObject {
     @Published var expanded = false
     @Published var geometry: NotchGeometry
-    /// Snapshot aid: render as if Reduce Motion were on.
-    var forceReduceMotion = false
+    /// Fade instead of spring, and a still glow (Settings › Motion).
+    var reduceMotion = false
     init(geometry: NotchGeometry) { self.geometry = geometry }
 }
 
@@ -55,7 +55,7 @@ final class BreakPresenter {
     private var islandDisplay: CGDirectDisplayID?
     private var screenObserver: NSObjectProtocol?
 
-    private static var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+    private static var reduceMotion: Bool { Preferences.shared.reduceMotion }
 
     init() {
         screenObserver = NotificationCenter.default.addObserver(
@@ -76,7 +76,7 @@ final class BreakPresenter {
 
     // MARK: Show / dismiss
 
-    func showBreak(kinds: [BreakKind], pattern: BreathingPattern, strict: Bool, canSnooze: Bool, sound: Bool,
+    func showBreak(kinds: Set<BreakKind>, pattern: BreathingPattern, strict: Bool, canSnooze: Bool, sound: Bool,
                    onDone: @escaping () -> Void, onSnooze: @escaping () -> Void, onSkip: @escaping () -> Void,
                    onTimeout: @escaping () -> Void) {
         dismissBreak(animated: false)
@@ -91,6 +91,7 @@ final class BreakPresenter {
         let screen = Self.activeScreen
         islandDisplay = Self.displayID(screen)
         let model = IslandModel(geometry: .of(screen))
+        model.reduceMotion = Self.reduceMotion
         self.model = model
 
         let nudge = session.isNudge
@@ -200,7 +201,7 @@ final class BreakPresenter {
                 case 53: // Esc: skip (strict mode: hold it)
                     if isDown, !isRepeat { self.escPressed(session) }
                     if !isDown { self.escReleased(session) }
-                case 36, 76: // Return, Enter: done / next
+                case 36, 76: // Return, Enter: done
                     if isDown, !isRepeat, session.canFinishNow { session.next() }
                 case 37: // L: later
                     if isDown, !isRepeat, session.canSnooze, !session.isComplete { session.snooze() }

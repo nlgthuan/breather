@@ -86,7 +86,8 @@ struct PopoverView: View {
                     }
                 }
             }
-            Text("Click a row to take that break now.")
+            Text("Always at least \(Int(Scheduler.gapMinutes)) min apart; breaks due together share one reminder. Click a row to take it now.")
+                .fixedSize(horizontal: false, vertical: true)
                 .font(Theme.font(12))
                 .foregroundStyle(Theme.text3)
                 .padding(.horizontal, 6)

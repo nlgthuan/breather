@@ -2,11 +2,12 @@
 
 A small macOS menu bar app that reminds you to rest your eyes, breathe and stretch.
 
-- **Eyes** every 20 min (20-20-20 rule + slow blinks), **Breathe** every 45 min (1 min guided), **Stretch** every 60 min (2 min, any movement), **Water** every 50 min (a few sips).
+- **Eyes** every 25 min (look far away + slow blinks), **Water** and **Stretch** every 50 min (a few sips; 2 min of any movement), **Breathe** every 75 min (1 min guided). All on a 25-minute rhythm, so they line up.
 - Breaks open as a black island that grows out of the MacBook notch (top centre on other screens), with a soft glowing edge. No full-screen takeover, no "start?" step.
-- The island takes keyboard focus: Return = done/next, L = later (twice per break), Esc = skip.
+- The island takes keyboard focus: Return = done, L = later (twice per break), Esc = skip.
 - Water on its own is a quiet nudge: a smaller island that doesn't take focus and slides away after 8 s. Ignored nudges don't count as skipped.
-- Follows the system's light/dark mode, and Reduce Motion (fades instead of springs, a still glow).
+- Follows the system's light/dark mode. Motion follows the system's Reduce Motion by default, or can be set to Full or Reduced in Settings (reduced: fades instead of springs, a still glow).
+- Reminders never land back to back: ones due within 5 min share a single card ("Stand up, grab some water"), and there are always at least 25 min between reminders.
 - Counts only active time. Idle 2+ min pauses the timers; away or locked 5+ min counts as a natural break.
 - Waits while the camera or microphone is on, or a full-screen app is in front, and for a pause in typing.
 - Strict mode hides Skip; holding Esc for 3 seconds is always an emergency exit.

@@ -27,24 +27,33 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            Section("Breaks") {
-                breakRow(.eyes, enabled: $prefs.eyesEnabled, minutes: $prefs.eyesInterval, options: [15, 20, 25, 30, 40])
-                breakRow(.breathe, enabled: $prefs.breatheEnabled, minutes: $prefs.breatheInterval, options: [30, 45, 60, 75, 90])
-                breakRow(.stretch, enabled: $prefs.stretchEnabled, minutes: $prefs.stretchInterval, options: [45, 60, 75, 90, 120])
-                breakRow(.hydrate, enabled: $prefs.hydrateEnabled, minutes: $prefs.hydrateInterval, options: [30, 40, 50, 60, 90])
+            Section {
+                breakRow(.eyes, enabled: $prefs.eyesEnabled, minutes: $prefs.eyesInterval, options: [25, 30, 40, 50, 60])
+                breakRow(.breathe, enabled: $prefs.breatheEnabled, minutes: $prefs.breatheInterval, options: [50, 60, 75, 90, 120])
+                breakRow(.stretch, enabled: $prefs.stretchEnabled, minutes: $prefs.stretchInterval, options: [50, 60, 75, 90, 120])
+                breakRow(.hydrate, enabled: $prefs.hydrateEnabled, minutes: $prefs.hydrateInterval, options: [50, 60, 75, 90, 120])
                 Picker("Breathing style", selection: $prefs.breathingPattern) {
                     ForEach(BreathingPattern.allCases) { Text($0.label).tag($0) }
                 }
+            } header: {
+                Text("Breaks")
+            } footer: {
+                Text("Reminders are always at least 25 minutes apart. Ones that come due together share a single card.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section {
                 Toggle("Strict mode", isOn: $prefs.strictMode)
                 Toggle("Wait until calls and full-screen apps end", isOn: $prefs.holdDuringCalls)
                 Toggle("Play soft sounds", isOn: $prefs.soundEnabled)
+                Picker("Motion", selection: $prefs.motion) {
+                    ForEach(MotionMode.allCases) { Text($0.label).tag($0) }
+                }
             } header: {
                 Text("Reminders")
             } footer: {
-                Text("Strict mode hides Skip. You can still postpone twice, and holding Esc for 3 seconds always gets you out.")
+                Text("Strict mode hides Skip. You can still postpone twice, and holding Esc for 3 seconds always gets you out. Reduced motion fades reminders in and keeps the glow still.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

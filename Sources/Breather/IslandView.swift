@@ -51,8 +51,7 @@ struct NotchShape: Shape {
 struct IslandView: View {
     @ObservedObject var model: IslandModel
     @ObservedObject var session: BreakSession
-    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
-    private var reduceMotion: Bool { systemReduceMotion || model.forceReduceMotion }
+    private var reduceMotion: Bool { model.reduceMotion }
 
     var body: some View {
         let g = model.geometry
@@ -162,21 +161,36 @@ private struct BreakContent: View {
         }
     }
 
+    // Breaks that landed together share one card, so the words cover all of them.
+    private var water: Bool { session.extras.contains(.hydrate) }
+    private var eyes: Bool { session.extras.contains(.eyes) }
+    private var breathe: Bool { session.extras.contains(.breathe) }
+
     private func caption(_ step: BreakStep) -> String {
-        let part = session.steps.count > 1 ? " · \(session.index + 1) of \(session.steps.count)" : ""
         switch step {
-        case .eyes: return "Eyes · 20 seconds" + part
-        case .breathe(let p): return "Breathe · breath \(min(p.breaths, Int(t / p.cycle) + 1)) of \(p.breaths)" + part
-        case .stretch: return "Stretch · 2 minutes" + part
-        case .hydrate: return "Water · a few sips" + part
+        case .eyes:
+            return (water ? "Eyes & water" : "Eyes") + " · 20 seconds"
+        case .breathe(let p):
+            let breath = "breath \(min(p.breaths, Int(t / p.cycle) + 1)) of \(p.breaths)"
+            return (water ? "Breathe & water" : "Breathe") + " · " + breath
+        case .stretch:
+            switch (breathe, water) {
+            case (true, true): return "Stretch, breathe & water · 2 min"
+            case (true, false): return "Stretch & breathe · 2 minutes"
+            case (false, true): return "Stretch & water · 2 minutes"
+            case (false, false): return "Stretch · 2 minutes"
+            }
+        case .hydrate:
+            return "Water · a few sips"
         }
     }
 
     private func title(_ step: BreakStep) -> String {
         switch step {
-        case .eyes: t < BreakStep.eyesLookAway ? "Look away now" : "Blink slowly"
+        case .eyes:
+            t < BreakStep.eyesLookAway ? (water ? "Look away, take a sip" : "Look away now") : "Blink slowly"
         case .breathe(let p): Breath.phase(p, t: t).label
-        case .stretch: "Time to stretch"
+        case .stretch: water ? "Stand up, grab some water" : "Time to stretch"
         case .hydrate: "Drink some water"
         }
     }
@@ -184,15 +198,22 @@ private struct BreakContent: View {
     private func detail(_ step: BreakStep) -> String {
         switch step {
         case .eyes:
-            t < BreakStep.eyesLookAway
-                ? (session.sound ? "About 6 m away. A chime means blink." : "Something about 6 m away.")
-                : "Ten slow, gentle blinks."
+            if t >= BreakStep.eyesLookAway { return "Ten slow, gentle blinks." }
+            if water { return "Sip while you look far away." }
+            return session.sound ? "About 6 m away. A chime means blink." : "Something about 6 m away."
         case .breathe(let p):
-            p == .box ? "In 4, hold 4, out 4, hold 4." : "In for 4, out for 6."
+            let rhythm = p == .box ? "In 4, hold 4, out 4, hold 4." : (eyes ? "In 4, out 6." : "In for 4, out for 6.")
+            if water { return rhythm + " Then some water." }
+            return eyes && p == .relaxed ? "Eyes closed. " + rhythm : rhythm
         case .stretch:
-            "Stand up, roll your shoulders."
+            switch (water, breathe) {
+            case (true, true): return "Refill your glass, breathe slowly."
+            case (true, false): return "Stretch on the way to a refill."
+            case (false, true): return "Move a little, then slow breaths."
+            case (false, false): return "Stand up, roll your shoulders."
+            }
         case .hydrate:
-            "No glass nearby? Go fill one up."
+            return "No glass nearby? Go fill one up."
         }
     }
 }
@@ -357,7 +378,7 @@ private struct KeyBar: View {
                 KeyButton(label: "Skip", key: "esc", fill: false, action: session.skip)
             }
             if session.canFinishNow {
-                KeyButton(label: session.isLastStep ? "Done" : "Next", key: "↩", prominent: true, fill: false,
+                KeyButton(label: "Done", key: "↩", prominent: true, fill: false,
                           action: session.next)
             }
         }

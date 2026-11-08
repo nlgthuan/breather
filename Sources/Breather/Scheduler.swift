@@ -28,7 +28,8 @@ final class Scheduler: ObservableObject {
     static let maxWaitForPause: TimeInterval = 90 // …but not forever
     static let snoozeLength: TimeInterval = 300
     static let maxSnoozes = 2
-    static let mergeWindow: TimeInterval = 300    // breaks due within 5 min are combined
+    static let mergeMinutes: Double = 5           // breaks due within 5 min share one card
+    static let gapMinutes: Double = 25            // at least this long between reminders
 
     private enum Phase {
         case counting
@@ -41,6 +42,9 @@ final class Scheduler: ObservableObject {
     private var pausedUntil: Date?
     private var snoozeUntil: Date?
     private var snoozeCount = 0
+    /// When the last reminder ended. Anything due sooner after it than the gap
+    /// waits, and is bundled with whatever else comes due in the meantime.
+    private var lastReminderEnd: Date?
     private var lastTick = Date()
     private var timer: Timer?
 
@@ -149,6 +153,7 @@ final class Scheduler: ObservableObject {
                 elapsed[k, default: 0] += dt
             }
             if let s = snoozeUntil, now < s { return }
+            if let last = lastReminderEnd, now.timeIntervalSince(last) < Self.gapMinutes * prefs.secondsPerMinute { return }
             let due = BreakKind.allCases.filter { prefs.isEnabled($0) && elapsed[$0, default: 0] >= prefs.interval($0) }
             if !due.isEmpty { phase = .waiting(Set(due), since: now) }
 
@@ -172,14 +177,13 @@ final class Scheduler: ObservableObject {
         if status != s { status = s }
     }
 
-    /// Adds breaks that are almost due, so two reminders don't arrive minutes apart.
+    /// Adds breaks that are almost due, so two reminders don't arrive minutes apart:
+    /// they share one card instead ("Stand up, grab some water").
     private func merge(_ due: Set<BreakKind>) -> Set<BreakKind> {
         var set = due
         for k in BreakKind.allCases where prefs.isEnabled(k) && !set.contains(k) {
-            if prefs.interval(k) - elapsed[k, default: 0] <= Self.mergeWindow { set.insert(k) }
+            if prefs.interval(k) - elapsed[k, default: 0] <= Self.mergeMinutes * prefs.secondsPerMinute { set.insert(k) }
         }
-        // Stretching away from the screen rests the eyes too.
-        if set.contains(.stretch) { set.remove(.eyes) }
         return set
     }
 
@@ -194,7 +198,7 @@ final class Scheduler: ObservableObject {
             if kinds == [.hydrate] { Sounds.step() } else { Sounds.start() } // a nudge gets the softer tick
         }
         presenter.showBreak(
-            kinds: kinds.sorted(),
+            kinds: kinds,
             pattern: prefs.breathingPattern,
             strict: prefs.strictMode,
             canSnooze: automatic && snoozeCount < Self.maxSnoozes,
@@ -214,6 +218,7 @@ final class Scheduler: ObservableObject {
         for k in reset { elapsed[k] = 0 }
         snoozeCount = 0
         snoozeUntil = nil
+        lastReminderEnd = Date()
         if let taken { Stats.shared.record(taken: taken) }
         phase = .counting
         lastTick = Date()

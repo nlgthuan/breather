@@ -11,8 +11,8 @@ enum Snapshots {
 
         func session(_ kinds: [BreakKind], strict: Bool = false, at t: TimeInterval, complete: Bool = false,
                      canSnooze: Bool = true) -> BreakSession {
-            let s = BreakSession(kinds: kinds, pattern: .relaxed, strict: strict, canSnooze: canSnooze, sound: true)
-            s.preview(step: 0, elapsed: t, complete: complete)
+            let s = BreakSession(kinds: Set(kinds), pattern: .relaxed, strict: strict, canSnooze: canSnooze, sound: true)
+            s.preview(elapsed: t, complete: complete)
             return s
         }
 
@@ -31,7 +31,7 @@ enum Snapshots {
         func island(_ s: BreakSession, reduceMotion: Bool = false) -> some View {
             let model = IslandModel(geometry: NotchGeometry(notchWidth: 200, barHeight: 32, hasNotch: true))
             model.expanded = true
-            model.forceReduceMotion = reduceMotion
+            model.reduceMotion = reduceMotion
             let size = IslandMetrics.windowSize(nudge: s.isNudge)
             return ZStack(alignment: .top) {
                 LinearGradient(colors: [Color(red: 0.62, green: 0.70, blue: 0.75), Color(red: 0.40, green: 0.49, blue: 0.55)],
@@ -49,7 +49,10 @@ enum Snapshots {
         save("stretch-hydrate", island(session([.stretch, .hydrate], at: 30)))
         save("strict",island(session([.stretch], strict: true, at: 30)))
         save("manual", island(session([.breathe], at: 3, canSnooze: false)))
-        save("combined", island(session([.eyes, .breathe], at: 5)))
+        save("eyes-breathe", island(session([.eyes, .breathe], at: 5)))
+        save("eyes-water", island(session([.eyes, .hydrate], at: 5)))
+        save("breathe-water", island(session([.breathe, .hydrate], at: 5)))
+        save("stretch-breathe-water", island(session([.stretch, .breathe, .hydrate, .eyes], at: 30)))
         save("complete", island(session([.eyes], at: 0, complete: true)))
         save("reduce-motion", island(session([.eyes], at: 7), reduceMotion: true))
         save("popover", PopoverView(scheduler: .shared, stats: .shared).padding(30).background(Color(white: 0.45)))

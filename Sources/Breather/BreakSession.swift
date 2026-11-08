@@ -18,14 +18,18 @@ enum BreakStep {
         }
     }
 
-    static func steps(for kinds: [BreakKind], pattern: BreathingPattern) -> [BreakStep] {
-        kinds.map { kind in
-            switch kind {
-            case .eyes: .eyes
-            case .breathe: .breathe(pattern)
-            case .stretch: .stretch
-            case .hydrate: .hydrate
-            }
+    /// Breaks that land together become one card. The main activity is the
+    /// biggest one; the rest (a few sips, resting the eyes) ride along with it.
+    static func primary(of kinds: Set<BreakKind>) -> BreakKind {
+        [.stretch, .breathe, .eyes, .hydrate].first { kinds.contains($0) } ?? .hydrate
+    }
+
+    init(_ kind: BreakKind, pattern: BreathingPattern) {
+        switch kind {
+        case .eyes: self = .eyes
+        case .breathe: self = .breathe(pattern)
+        case .stretch: self = .stretch
+        case .hydrate: self = .hydrate
         }
     }
 }
@@ -36,16 +40,17 @@ extension BreathingPattern {
     var breaths: Int { self == .box ? 4 : 6 }
 }
 
-/// Drives one break overlay: which step is showing and when it's finished.
+/// Drives one break card: its timer, and when it's finished.
 @MainActor
 final class BreakSession: ObservableObject {
-    let kinds: [BreakKind]
-    let steps: [BreakStep]
+    let kinds: Set<BreakKind>
+    let step: BreakStep
+    /// Bundled in with the main activity, e.g. water alongside a stretch.
+    let extras: Set<BreakKind>
     let strict: Bool
     let canSnooze: Bool
     let sound: Bool
 
-    @Published private(set) var index = 0
     @Published private(set) var stepStart = Date()
     @Published private(set) var isComplete = false
     @Published private(set) var completedAt: Date?
@@ -70,23 +75,22 @@ final class BreakSession: ObservableObject {
     /// Return marks the break done early; strict mode only allows it at the end.
     var canFinishNow: Bool { isComplete || !strict }
 
-    /// Snapshot/testing aid: jump to a step, `elapsed` seconds in.
-    func preview(step: Int, elapsed: TimeInterval, complete: Bool = false) {
-        index = min(step, steps.count - 1)
+    /// Snapshot/testing aid: show the card `elapsed` seconds in.
+    func preview(elapsed: TimeInterval, complete: Bool = false) {
         stepStart = Date().addingTimeInterval(-elapsed)
         isComplete = complete
         completedAt = complete ? Date().addingTimeInterval(-1) : nil
     }
 
-    init(kinds: [BreakKind], pattern: BreathingPattern, strict: Bool, canSnooze: Bool, sound: Bool) {
+    init(kinds: Set<BreakKind>, pattern: BreathingPattern, strict: Bool, canSnooze: Bool, sound: Bool) {
         self.kinds = kinds
-        self.steps = BreakStep.steps(for: kinds, pattern: pattern)
+        let main = BreakStep.primary(of: kinds)
+        self.step = BreakStep(main, pattern: pattern)
+        self.extras = kinds.subtracting([main])
         self.strict = strict
         self.canSnooze = canSnooze
         self.sound = sound
     }
-
-    var step: BreakStep { steps[index] }
 
     func start() {
         stepStart = Date()
@@ -118,28 +122,13 @@ final class BreakSession: ObservableObject {
             if sound { Sounds.step() } // they're looking away: a sound tells them to look back
         }
         guard t >= step.duration else { return }
-        advance(now)
+        isComplete = true
+        completedAt = now
+        if sound { Sounds.done() }
     }
 
-    private func advance(_ now: Date) {
-        if index + 1 < steps.count {
-            index += 1
-            stepStart = now
-            blinkCuePlayed = false
-            if sound { Sounds.step() }
-        } else {
-            isComplete = true
-            completedAt = now
-            if sound { Sounds.done() }
-        }
-    }
-
-    var isLastStep: Bool { index + 1 >= steps.count }
-
-    /// Return key: go to the next step, or finish on the last one.
-    func next() {
-        if isComplete || isLastStep { done() } else { advance(Date()) }
-    }
+    /// Return key: finish.
+    func next() { done() }
 
     func done() { stop(); onDone() }
     func skip() { stop(); onSkip() }
