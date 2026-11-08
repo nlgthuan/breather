@@ -4,6 +4,7 @@ enum BreakStep {
     case eyes
     case breathe(BreathingPattern)
     case stretch
+    case hydrate
 
     static let eyesLookAway: TimeInterval = 20
     static let eyesBlink: TimeInterval = 10
@@ -13,6 +14,7 @@ enum BreakStep {
         case .eyes: Self.eyesLookAway + Self.eyesBlink
         case .breathe(let p): Double(p.breaths) * p.cycle
         case .stretch: 120
+        case .hydrate: 20
         }
     }
 
@@ -22,6 +24,7 @@ enum BreakStep {
             case .eyes: .eyes
             case .breathe: .breathe(pattern)
             case .stretch: .stretch
+            case .hydrate: .hydrate
             }
         }
     }

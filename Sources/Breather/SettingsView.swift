@@ -31,6 +31,7 @@ struct SettingsView: View {
                 breakRow(.eyes, enabled: $prefs.eyesEnabled, minutes: $prefs.eyesInterval, options: [15, 20, 25, 30, 40])
                 breakRow(.breathe, enabled: $prefs.breatheEnabled, minutes: $prefs.breatheInterval, options: [30, 45, 60, 75, 90])
                 breakRow(.stretch, enabled: $prefs.stretchEnabled, minutes: $prefs.stretchInterval, options: [45, 60, 75, 90, 120])
+                breakRow(.hydrate, enabled: $prefs.hydrateEnabled, minutes: $prefs.hydrateInterval, options: [30, 40, 50, 60, 90])
                 Picker("Breathing style", selection: $prefs.breathingPattern) {
                     ForEach(BreathingPattern.allCases) { Text($0.label).tag($0) }
                 }

@@ -153,6 +153,7 @@ private struct BreakContent: View {
         case .eyes: return "Eyes · 20 seconds" + part
         case .breathe(let p): return "Breathe · breath \(min(p.breaths, Int(t / p.cycle) + 1)) of \(p.breaths)" + part
         case .stretch: return "Stretch · 2 minutes" + part
+        case .hydrate: return "Water · a few sips" + part
         }
     }
 
@@ -161,6 +162,7 @@ private struct BreakContent: View {
         case .eyes: t < BreakStep.eyesLookAway ? "Look away now" : "Blink slowly"
         case .breathe(let p): Breath.phase(p, t: t).label
         case .stretch: "Time to stretch"
+        case .hydrate: "Drink some water"
         }
     }
 
@@ -174,6 +176,8 @@ private struct BreakContent: View {
             p == .box ? "In 4, hold 4, out 4, hold 4." : "In for 4, out for 6."
         case .stretch:
             "Stand up, roll your shoulders."
+        case .hydrate:
+            "No glass nearby? Go fill one up."
         }
     }
 }
@@ -219,6 +223,7 @@ private struct Orb: View {
         case .eyes: t < BreakStep.eyesLookAway ? "eye" : "eye.slash"
         case .stretch: "figure.stand"
         case .breathe: "wind"
+        case .hydrate: "drop.fill"
         }
     }
 

@@ -1,13 +1,14 @@
 import Foundation
 
 enum BreakKind: String, CaseIterable, Codable, Hashable, Comparable {
-    case eyes, breathe, stretch
+    case eyes, breathe, stretch, hydrate
 
     var title: String {
         switch self {
         case .eyes: "Rest your eyes"
         case .breathe: "Breathe"
         case .stretch: "Stretch"
+        case .hydrate: "Drink water"
         }
     }
 
@@ -16,6 +17,7 @@ enum BreakKind: String, CaseIterable, Codable, Hashable, Comparable {
         case .eyes: "eye"
         case .breathe: "wind"
         case .stretch: "figure.stand"
+        case .hydrate: "drop"
         }
     }
 
@@ -49,6 +51,8 @@ final class Preferences: ObservableObject {
     @Published var breatheInterval: Int { didSet { d.set(breatheInterval, forKey: "breatheInterval") } }
     @Published var stretchEnabled: Bool { didSet { d.set(stretchEnabled, forKey: "stretchEnabled") } }
     @Published var stretchInterval: Int { didSet { d.set(stretchInterval, forKey: "stretchInterval") } }
+    @Published var hydrateEnabled: Bool { didSet { d.set(hydrateEnabled, forKey: "hydrateEnabled") } }
+    @Published var hydrateInterval: Int { didSet { d.set(hydrateInterval, forKey: "hydrateInterval") } }
     @Published var breathingPattern: BreathingPattern { didSet { d.set(breathingPattern.rawValue, forKey: "breathingPattern") } }
 
     @Published var strictMode: Bool { didSet { d.set(strictMode, forKey: "strictMode") } }
@@ -79,6 +83,8 @@ final class Preferences: ObservableObject {
         breatheInterval = int("breatheInterval", 45)
         stretchEnabled = bool("stretchEnabled", true)
         stretchInterval = int("stretchInterval", 60)
+        hydrateEnabled = bool("hydrateEnabled", true)
+        hydrateInterval = int("hydrateInterval", 50)
         breathingPattern = BreathingPattern(rawValue: d.string(forKey: "breathingPattern") ?? "") ?? .relaxed
         strictMode = bool("strictMode", false)
         soundEnabled = bool("soundEnabled", true)
@@ -94,6 +100,7 @@ final class Preferences: ObservableObject {
         case .eyes: eyesEnabled
         case .breathe: breatheEnabled
         case .stretch: stretchEnabled
+        case .hydrate: hydrateEnabled
         }
     }
 
@@ -104,6 +111,7 @@ final class Preferences: ObservableObject {
         case .eyes: minutes = eyesInterval
         case .breathe: minutes = breatheInterval
         case .stretch: minutes = stretchInterval
+        case .hydrate: minutes = hydrateInterval
         }
         return Double(minutes) * secondsPerMinute
     }

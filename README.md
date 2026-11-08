@@ -2,7 +2,7 @@
 
 A small macOS menu bar app that reminds you to rest your eyes, breathe and stretch.
 
-- **Eyes** every 20 min (20-20-20 rule + slow blinks), **Breathe** every 45 min (1 min guided), **Stretch** every 60 min (2 min, any movement).
+- **Eyes** every 20 min (20-20-20 rule + slow blinks), **Breathe** every 45 min (1 min guided), **Stretch** every 60 min (2 min, any movement), **Water** every 50 min (a few sips).
 - Breaks open as a black island that grows out of the MacBook notch (top centre on other screens), with a soft glowing edge. No full-screen takeover, no "start?" step.
 - The island takes keyboard focus: Return = done/next, L = later (twice per break), Esc = skip.
 - Counts only active time. Idle 2+ min pauses the timers; away or locked 5+ min counts as a natural break.
