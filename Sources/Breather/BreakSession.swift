@@ -55,6 +55,13 @@ final class BreakSession: ObservableObject {
     var onDone: () -> Void = {}
     var onSnooze: () -> Void = {}
     var onSkip: () -> Void = {}
+    /// A nudge closed on its own without being clicked.
+    var onTimeout: () -> Void = {}
+
+    /// Water on its own is a quiet nudge: it doesn't take keyboard focus and
+    /// slides away by itself after a few seconds.
+    var isNudge: Bool { kinds == [.hydrate] }
+    static let nudgeDuration: TimeInterval = 8
 
     private var timer: Timer?
     private var blinkCuePlayed = false
@@ -97,6 +104,10 @@ final class BreakSession: ObservableObject {
 
     private func tick() {
         let now = Date()
+        if isNudge {
+            if now.timeIntervalSince(stepStart) >= Self.nudgeDuration { stop(); onTimeout() }
+            return
+        }
         if isComplete {
             if let c = completedAt, now.timeIntervalSince(c) >= Self.autoCloseAfter { done() }
             return

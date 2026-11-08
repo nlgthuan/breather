@@ -12,8 +12,13 @@ enum IslandMetrics {
     static let width: CGFloat = 640       // open island, including ears
     static let breakHeight: CGFloat = 68  // below the menu bar: one row
     static let doneHeight: CGFloat = 68
+    static let nudgeWidth: CGFloat = 420  // water nudge: smaller and quieter
+    static let nudgeHeight: CGFloat = 52
     static let glow: CGFloat = 30         // room around the island for its glow
-    static var windowSize: CGSize { CGSize(width: width + glow * 2, height: 40 + breakHeight + glow) }
+    static func windowSize(nudge: Bool) -> CGSize {
+        nudge ? CGSize(width: nudgeWidth + glow * 2, height: 40 + nudgeHeight + glow)
+              : CGSize(width: width + glow * 2, height: 40 + breakHeight + glow)
+    }
 }
 
 /// The island's outline: flush with the top of the screen, curving out into the
@@ -46,19 +51,27 @@ struct NotchShape: Shape {
 struct IslandView: View {
     @ObservedObject var model: IslandModel
     @ObservedObject var session: BreakSession
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    private var reduceMotion: Bool { systemReduceMotion || model.forceReduceMotion }
 
     var body: some View {
         let g = model.geometry
         let open = model.expanded
-        let width = open ? IslandMetrics.width : g.notchWidth + IslandMetrics.ear * 2
-        let height = g.barHeight + (open ? (session.isComplete ? IslandMetrics.doneHeight : IslandMetrics.breakHeight) : 0)
-        let shape = NotchShape(bottomRadius: open ? 24 : 9)
+        let nudge = session.isNudge
+        let openWidth = nudge ? IslandMetrics.nudgeWidth : IslandMetrics.width
+        let openHeight = nudge ? IslandMetrics.nudgeHeight
+            : session.isComplete ? IslandMetrics.doneHeight : IslandMetrics.breakHeight
+        let width = open ? openWidth : g.notchWidth + IslandMetrics.ear * 2
+        let height = g.barHeight + (open ? openHeight : 0)
+        let shape = NotchShape(bottomRadius: open ? (nudge ? 20 : 24) : 9)
         let glow = IslandMetrics.glow
 
         TimelineView(.animation) { ctx in
             let t = max(0, ctx.date.timeIntervalSince(session.stepStart))
             // A slow glow that breathes in and out around the edge.
-            let pulse = 0.5 + 0.5 * sin(ctx.date.timeIntervalSinceReferenceDate * 2 * .pi / 4)
+            // Reduce Motion: hold it still. A nudge glows more faintly.
+            let pulse = (reduceMotion ? 0.6 : 0.5 + 0.5 * sin(ctx.date.timeIntervalSinceReferenceDate * 2 * .pi / 4))
+                * (nudge ? 0.6 : 1)
 
             ZStack(alignment: .top) {
                 // Glow on the sides and bottom only: faded out across the menu bar,
@@ -97,18 +110,20 @@ struct IslandView: View {
                     .opacity(open ? 1 : 0)
 
                 Group {
-                    if session.isComplete {
+                    if nudge {
+                        NudgeRow(session: session, now: ctx.date)
+                    } else if session.isComplete {
                         CompleteRow(session: session, now: ctx.date)
                     } else {
                         BreakContent(session: session, t: t, now: ctx.date)
                     }
                 }
-                .padding(.top, g.barHeight + 4)
-                .padding(.horizontal, IslandMetrics.ear + 16)
-                .padding(.bottom, 12)
+                .padding(.top, g.barHeight + (nudge ? 2 : 4))
+                .padding(.horizontal, IslandMetrics.ear + (nudge ? 12 : 16))
+                .padding(.bottom, nudge ? 10 : 12)
                 .frame(width: width, height: height, alignment: .top)
                 .opacity(open ? 1 : 0)
-                .animation(.easeOut(duration: 0.2).delay(open ? 0.15 : 0), value: open)
+                .animation(.easeOut(duration: 0.2).delay(open && !reduceMotion ? 0.15 : 0), value: open)
             }
             .frame(width: width, height: height)
         }
@@ -259,6 +274,41 @@ enum Breath {
     }
 }
 
+// MARK: Water nudge
+
+/// One quiet row: no keyboard focus, closes by itself.
+private struct NudgeRow: View {
+    @ObservedObject var session: BreakSession
+    let now: Date
+
+    var body: some View {
+        let fraction = min(1, max(0, now.timeIntervalSince(session.stepStart) / BreakSession.nudgeDuration))
+        HStack(spacing: 10) {
+            ZStack {
+                Circle().fill(Island.mint.opacity(0.14))
+                // Time until it slides away.
+                Circle()
+                    .trim(from: 0, to: 1 - fraction)
+                    .stroke(Island.mint.opacity(0.7), style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                Image(systemName: "drop.fill")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Island.mint)
+            }
+            .frame(width: 34, height: 34)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Time for some water").font(Theme.font(14, .medium))
+                Text("A few sips")
+                    .font(Theme.font(11.5))
+                    .foregroundStyle(Island.text2)
+            }
+            .lineLimit(1)
+            Spacer(minLength: 8)
+            KeyButton(label: "Done", key: nil, prominent: true, fill: false, action: session.done)
+        }
+    }
+}
+
 // MARK: Finished
 
 private struct CompleteRow: View {
@@ -333,7 +383,7 @@ private struct KeyBar: View {
 
 private struct KeyButton: View {
     let label: String
-    let key: String
+    let key: String?
     var prominent = false
     var fill = true
     let action: () -> Void
@@ -343,10 +393,10 @@ private struct KeyButton: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Text(label).font(Theme.font(13, prominent ? .semibold : .medium)).fixedSize()
-                Keycap(key: key, prominent: prominent)
+                if let key { Keycap(key: key, prominent: prominent) }
             }
             .padding(.horizontal, 14)
-            .frame(maxWidth: fill ? .infinity : nil, minHeight: 32)
+            .frame(maxWidth: fill ? .infinity : nil, minHeight: key == nil ? 28 : 32)
             .foregroundStyle(prominent ? Island.ink : .white)
             .background(Capsule().fill(prominent ? Island.mint : .white.opacity(hover ? 0.16 : 0.1)))
             .contentShape(Capsule())

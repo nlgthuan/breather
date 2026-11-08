@@ -1,13 +1,21 @@
+import AppKit
 import SwiftUI
 
-/// Soft, light, sage-green theme (menu bar popover and settings).
+/// Soft sage-green theme (menu bar popover and settings), light or dark with the system.
 enum Theme {
-    static let ink = Color(red: 0.12, green: 0.18, blue: 0.16)        // main text
-    static let text2 = Color(red: 0.29, green: 0.35, blue: 0.33)      // body text
-    static let text3 = Color(red: 0.36, green: 0.42, blue: 0.40)      // captions
-    static let accent = Color(red: 0.23, green: 0.46, blue: 0.39)     // accent text
-    static let soft = Color(red: 0.49, green: 0.72, blue: 0.64)       // progress, decoration
-    static let panel = Color(red: 0.98, green: 0.984, blue: 0.976)
+    static let ink = adaptive(light: (0.12, 0.18, 0.16), dark: (0.91, 0.95, 0.93))    // main text
+    static let text2 = adaptive(light: (0.29, 0.35, 0.33), dark: (0.74, 0.80, 0.77))  // body text
+    static let text3 = adaptive(light: (0.36, 0.42, 0.40), dark: (0.60, 0.67, 0.64))  // captions
+    static let accent = adaptive(light: (0.23, 0.46, 0.39), dark: (0.56, 0.86, 0.75)) // accent text
+    static let soft = adaptive(light: (0.49, 0.72, 0.64), dark: (0.42, 0.70, 0.61))   // progress, decoration
+    static let panel = adaptive(light: (0.98, 0.984, 0.976), dark: (0.11, 0.135, 0.125))
+
+    private static func adaptive(light: (Double, Double, Double), dark: (Double, Double, Double)) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let c = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+            return NSColor(srgbRed: c.0, green: c.1, blue: c.2, alpha: 1)
+        })
+    }
 
     static func font(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
         .system(size: size, weight: weight, design: .rounded)

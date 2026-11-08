@@ -1,10 +1,17 @@
 import AppKit
 import SwiftUI
 
-/// Borderless window that can take keyboard focus, so shortcuts work right away.
-private final class IslandWindow: NSWindow {
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
+/// Borderless panel for the island. A break takes keyboard focus so shortcuts
+/// work right away; a nudge never does.
+private final class IslandWindow: NSPanel {
+    var takesFocus = true
+    override var canBecomeKey: Bool { takesFocus }
+    override var canBecomeMain: Bool { takesFocus }
+}
+
+/// A nudge's window isn't key, so let the first click press its button.
+private final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
 /// Where the island hangs: around the camera notch on MacBooks, otherwise
@@ -29,6 +36,8 @@ struct NotchGeometry {
 final class IslandModel: ObservableObject {
     @Published var expanded = false
     @Published var geometry: NotchGeometry
+    /// Snapshot aid: render as if Reduce Motion were on.
+    var forceReduceMotion = false
     init(geometry: NotchGeometry) { self.geometry = geometry }
 }
 
@@ -45,6 +54,8 @@ final class BreakPresenter {
     private var previousApp: NSRunningApplication?
     private var islandDisplay: CGDirectDisplayID?
     private var screenObserver: NSObjectProtocol?
+
+    private static var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 
     init() {
         screenObserver = NotificationCenter.default.addObserver(
@@ -66,13 +77,15 @@ final class BreakPresenter {
     // MARK: Show / dismiss
 
     func showBreak(kinds: [BreakKind], pattern: BreathingPattern, strict: Bool, canSnooze: Bool, sound: Bool,
-                   onDone: @escaping () -> Void, onSnooze: @escaping () -> Void, onSkip: @escaping () -> Void) {
+                   onDone: @escaping () -> Void, onSnooze: @escaping () -> Void, onSkip: @escaping () -> Void,
+                   onTimeout: @escaping () -> Void) {
         dismissBreak(animated: false)
 
         let session = BreakSession(kinds: kinds, pattern: pattern, strict: strict, canSnooze: canSnooze, sound: sound)
         session.onDone = onDone
         session.onSnooze = onSnooze
         session.onSkip = onSkip
+        session.onTimeout = onTimeout
         self.session = session
 
         let screen = Self.activeScreen
@@ -80,31 +93,46 @@ final class BreakPresenter {
         let model = IslandModel(geometry: .of(screen))
         self.model = model
 
-        let w = IslandWindow(contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: false)
+        let nudge = session.isNudge
+        let w = IslandWindow(contentRect: .zero, styleMask: nudge ? [.borderless, .nonactivatingPanel] : .borderless,
+                             backing: .buffered, defer: false)
+        w.takesFocus = !nudge
+        w.hidesOnDeactivate = false
         w.isOpaque = false
         w.backgroundColor = .clear
         w.hasShadow = false
         w.level = .popUpMenu   // above the menu bar, so it can sit around the notch
         w.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         w.isReleasedWhenClosed = false
-        let host = NSHostingView(rootView: IslandView(model: model, session: session))
+        let host = FirstClickHostingView(rootView: IslandView(model: model, session: session))
         host.sizingOptions = []
         w.contentView = host
         place(w, on: screen)
         window = w
 
-        // Take keyboard focus so Esc / Return / L work straight away; give it back afterwards.
-        let front = NSWorkspace.shared.frontmostApplication
-        if front?.processIdentifier != getpid() { previousApp = front }
+        if Self.reduceMotion {
+            // Fade in, already open, instead of growing out of the notch.
+            model.expanded = true
+            w.alphaValue = 0
+        }
         w.orderFrontRegardless()
-        NSApp.activate(ignoringOtherApps: true)
-        w.makeKey()
-        installKeyMonitor()
+        if !nudge {
+            // Take keyboard focus so Esc / Return / L work straight away; give it back afterwards.
+            let front = NSWorkspace.shared.frontmostApplication
+            if front?.processIdentifier != getpid() { previousApp = front }
+            NSApp.activate(ignoringOtherApps: true)
+            w.makeKey()
+            installKeyMonitor()
+        }
         session.start()
 
-        // Grow out of the notch on the next frame.
-        DispatchQueue.main.async {
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.78)) { model.expanded = true }
+        if Self.reduceMotion {
+            NSAnimationContext.runAnimationGroup { $0.duration = 0.25; w.animator().alphaValue = 1 }
+        } else {
+            // Grow out of the notch on the next frame.
+            DispatchQueue.main.async {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.78)) { model.expanded = true }
+            }
         }
     }
 
@@ -122,7 +150,10 @@ final class BreakPresenter {
         window = nil
         let model = self.model
         self.model = nil
-        if animated, let model {
+        if animated, Self.reduceMotion {
+            NSAnimationContext.runAnimationGroup({ $0.duration = 0.25; w.animator().alphaValue = 0 },
+                                                 completionHandler: { w.orderOut(nil) })
+        } else if animated, let model {
             // Shrink back into the notch, then go.
             withAnimation(.spring(response: 0.4, dampingFraction: 0.9)) { model.expanded = false }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { w.orderOut(nil) }
@@ -138,7 +169,7 @@ final class BreakPresenter {
     /// The window is big enough for the open island plus room for its glow,
     /// pinned to the top centre of the screen.
     private func place(_ w: NSWindow, on screen: NSScreen) {
-        let size = IslandMetrics.windowSize
+        let size = IslandMetrics.windowSize(nudge: session?.isNudge ?? false)
         let frame = NSRect(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY - size.height,
                            width: size.width, height: size.height)
         w.setFrame(frame, display: true)
@@ -153,7 +184,7 @@ final class BreakPresenter {
         islandDisplay = Self.displayID(screen)
         model.geometry = .of(screen)
         place(w, on: screen)
-        w.makeKey()
+        if session?.isNudge == false { w.makeKey() }
     }
 
     // MARK: Keys

@@ -20,7 +20,6 @@ struct PopoverView: View {
         }
         .background(Theme.panel)
         .foregroundStyle(Theme.ink)
-        .environment(\.colorScheme, .light)
     }
 
     // MARK: Sections

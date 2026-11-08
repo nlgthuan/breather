@@ -16,6 +16,7 @@ swiftc -O -parse-as-library \
   Sources/Breather/*.swift \
   -o "$APP/Contents/MacOS/Breather"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 codesign --force --sign - "$APP" >/dev/null
 echo "Built $APP"
 

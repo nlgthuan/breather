@@ -190,7 +190,9 @@ final class Scheduler: ObservableObject {
     private func begin(_ kinds: Set<BreakKind>, automatic: Bool) {
         phase = .inBreak(kinds)
         setStatus(.onBreak)
-        if automatic && prefs.soundEnabled { Sounds.start() }
+        if automatic && prefs.soundEnabled {
+            if kinds == [.hydrate] { Sounds.step() } else { Sounds.start() } // a nudge gets the softer tick
+        }
         presenter.showBreak(
             kinds: kinds.sorted(),
             pattern: prefs.breathingPattern,
@@ -199,17 +201,20 @@ final class Scheduler: ObservableObject {
             sound: prefs.soundEnabled,
             onDone: { [weak self] in self?.finish(kinds, taken: true) },
             onSnooze: { [weak self] in self?.snooze() },
-            onSkip: { [weak self] in self?.finish(kinds, taken: false) })
+            onSkip: { [weak self] in self?.finish(kinds, taken: false) },
+            // An unclicked nudge still reminded you; it just isn't counted either way.
+            onTimeout: { [weak self] in self?.finish(kinds, taken: nil) })
     }
 
-    private func finish(_ kinds: Set<BreakKind>, taken: Bool) {
+    /// `taken`: nil when a nudge closed by itself, which doesn't count in the stats.
+    private func finish(_ kinds: Set<BreakKind>, taken: Bool?) {
         presenter.dismissBreak()
         var reset = kinds
         if kinds.contains(.stretch) { reset.insert(.eyes) }
         for k in reset { elapsed[k] = 0 }
         snoozeCount = 0
         snoozeUntil = nil
-        Stats.shared.record(taken: taken)
+        if let taken { Stats.shared.record(taken: taken) }
         phase = .counting
         lastTick = Date()
         setStatus(pausedUntil.map { .paused(until: $0) } ?? .running)

@@ -19,6 +19,15 @@ struct BreatherApp: App {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Opening Breather again (Launchpad, Spotlight, Finder) while it's already running
+    /// shows Settings, so the click visibly does something. Left alone during a break.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        MainActor.assumeIsolated {
+            if Scheduler.shared.status != .onBreak { SettingsWindow.show() }
+        }
+        return false
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         MainActor.assumeIsolated {
