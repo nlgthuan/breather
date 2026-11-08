@@ -48,7 +48,6 @@ final class BreakSession: ObservableObject {
     /// Bundled in with the main activity, e.g. water alongside a stretch.
     let extras: Set<BreakKind>
     let strict: Bool
-    let canSnooze: Bool
     let sound: Bool
 
     @Published private(set) var stepStart = Date()
@@ -72,8 +71,6 @@ final class BreakSession: ObservableObject {
     private var blinkCuePlayed = false
     static let autoCloseAfter: TimeInterval = 4
 
-    /// Return marks the break done early; strict mode only allows it at the end.
-    var canFinishNow: Bool { isComplete || !strict }
 
     /// Snapshot/testing aid: show the card `elapsed` seconds in.
     func preview(elapsed: TimeInterval, complete: Bool = false) {
@@ -82,13 +79,12 @@ final class BreakSession: ObservableObject {
         completedAt = complete ? Date().addingTimeInterval(-1) : nil
     }
 
-    init(kinds: Set<BreakKind>, pattern: BreathingPattern, strict: Bool, canSnooze: Bool, sound: Bool) {
+    init(kinds: Set<BreakKind>, pattern: BreathingPattern, strict: Bool, sound: Bool) {
         self.kinds = kinds
         let main = BreakStep.primary(of: kinds)
         self.step = BreakStep(main, pattern: pattern)
         self.extras = kinds.subtracting([main])
         self.strict = strict
-        self.canSnooze = canSnooze
         self.sound = sound
     }
 
@@ -126,9 +122,6 @@ final class BreakSession: ObservableObject {
         completedAt = now
         if sound { Sounds.done() }
     }
-
-    /// Return key: finish.
-    func next() { done() }
 
     func done() { stop(); onDone() }
     func skip() { stop(); onSkip() }

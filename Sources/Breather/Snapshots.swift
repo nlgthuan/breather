@@ -9,9 +9,8 @@ enum Snapshots {
         let url = URL(fileURLWithPath: dir)
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
 
-        func session(_ kinds: [BreakKind], strict: Bool = false, at t: TimeInterval, complete: Bool = false,
-                     canSnooze: Bool = true) -> BreakSession {
-            let s = BreakSession(kinds: Set(kinds), pattern: .relaxed, strict: strict, canSnooze: canSnooze, sound: true)
+        func session(_ kinds: [BreakKind], strict: Bool = false, at t: TimeInterval, complete: Bool = false) -> BreakSession {
+            let s = BreakSession(kinds: Set(kinds), pattern: .relaxed, strict: strict, sound: true)
             s.preview(elapsed: t, complete: complete)
             return s
         }
@@ -48,7 +47,6 @@ enum Snapshots {
         save("hydrate-nudge", island(session([.hydrate], at: 3)))
         save("stretch-hydrate", island(session([.stretch, .hydrate], at: 30)))
         save("strict",island(session([.stretch], strict: true, at: 30)))
-        save("manual", island(session([.breathe], at: 3, canSnooze: false)))
         save("eyes-breathe", island(session([.eyes, .breathe], at: 5)))
         save("eyes-water", island(session([.eyes, .hydrate], at: 5)))
         save("breathe-water", island(session([.breathe, .hydrate], at: 5)))

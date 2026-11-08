@@ -12,7 +12,7 @@ enum IslandMetrics {
     static let width: CGFloat = 640       // open island, including ears
     static let breakHeight: CGFloat = 68  // below the menu bar: one row
     static let doneHeight: CGFloat = 68
-    static let nudgeWidth: CGFloat = 420  // water nudge: smaller and quieter
+    static let nudgeWidth: CGFloat = 300  // water nudge: smaller and quieter
     static let nudgeHeight: CGFloat = 52
     static let glow: CGFloat = 30         // room around the island for its glow
     static func windowSize(nudge: Bool) -> CGSize {
@@ -324,9 +324,10 @@ private struct NudgeRow: View {
                     .foregroundStyle(Island.text2)
             }
             .lineLimit(1)
-            Spacer(minLength: 8)
-            KeyButton(label: "Done", key: nil, prominent: true, fill: false, action: session.done)
+            // Balances the drop, so the words (the heavier part) sit right under the notch.
+            Color.clear.frame(width: 34, height: 1)
         }
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -369,17 +370,11 @@ private struct KeyBar: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            if session.canSnooze {
-                KeyButton(label: "Later", key: "L", fill: false, action: session.snooze)
-            }
+            KeyButton(label: "Later", key: "L", fill: false, action: session.snooze)
             if session.strict {
                 strictExit
             } else {
                 KeyButton(label: "Skip", key: "esc", fill: false, action: session.skip)
-            }
-            if session.canFinishNow {
-                KeyButton(label: "Done", key: "↩", prominent: true, fill: false,
-                          action: session.next)
             }
         }
         .fixedSize()

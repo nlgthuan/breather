@@ -76,12 +76,12 @@ final class BreakPresenter {
 
     // MARK: Show / dismiss
 
-    func showBreak(kinds: Set<BreakKind>, pattern: BreathingPattern, strict: Bool, canSnooze: Bool, sound: Bool,
+    func showBreak(kinds: Set<BreakKind>, pattern: BreathingPattern, strict: Bool, sound: Bool,
                    onDone: @escaping () -> Void, onSnooze: @escaping () -> Void, onSkip: @escaping () -> Void,
                    onTimeout: @escaping () -> Void) {
         dismissBreak(animated: false)
 
-        let session = BreakSession(kinds: kinds, pattern: pattern, strict: strict, canSnooze: canSnooze, sound: sound)
+        let session = BreakSession(kinds: kinds, pattern: pattern, strict: strict, sound: sound)
         session.onDone = onDone
         session.onSnooze = onSnooze
         session.onSkip = onSkip
@@ -118,7 +118,7 @@ final class BreakPresenter {
         }
         w.orderFrontRegardless()
         if !nudge {
-            // Take keyboard focus so Esc / Return / L work straight away; give it back afterwards.
+            // Take keyboard focus so Esc / L work straight away; give it back afterwards.
             let front = NSWorkspace.shared.frontmostApplication
             if front?.processIdentifier != getpid() { previousApp = front }
             NSApp.activate(ignoringOtherApps: true)
@@ -201,10 +201,10 @@ final class BreakPresenter {
                 case 53: // Esc: skip (strict mode: hold it)
                     if isDown, !isRepeat { self.escPressed(session) }
                     if !isDown { self.escReleased(session) }
-                case 36, 76: // Return, Enter: done
-                    if isDown, !isRepeat, session.canFinishNow { session.next() }
+                case 36, 76: // Return, Enter: back to work once the break is over
+                    if isDown, !isRepeat, session.isComplete { session.done() }
                 case 37: // L: later
-                    if isDown, !isRepeat, session.canSnooze, !session.isComplete { session.snooze() }
+                    if isDown, !isRepeat, !session.isComplete { session.snooze() }
                 default:
                     return false
                 }

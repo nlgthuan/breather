@@ -27,7 +27,6 @@ final class Scheduler: ObservableObject {
     static let typingPause: TimeInterval = 2      // the island takes focus, so wait for a pause in typing…
     static let maxWaitForPause: TimeInterval = 90 // …but not forever
     static let snoozeLength: TimeInterval = 300
-    static let maxSnoozes = 2
     static let mergeMinutes: Double = 5           // breaks due within 5 min share one card
     static let gapMinutes: Double = 25            // at least this long between reminders
 
@@ -41,7 +40,9 @@ final class Scheduler: ObservableObject {
     private var elapsed: [BreakKind: TimeInterval] = [:]
     private var pausedUntil: Date?
     private var snoozeUntil: Date?
-    private var snoozeCount = 0
+    /// Breaks postponed with Later, which come back once the snooze is over
+    /// (even one taken from the menu, which isn't otherwise due).
+    private var laterKinds: Set<BreakKind> = []
     /// When the last reminder ended. Anything due sooner after it than the gap
     /// waits, and is bundled with whatever else comes due in the meantime.
     private var lastReminderEnd: Date?
@@ -154,8 +155,9 @@ final class Scheduler: ObservableObject {
             }
             if let s = snoozeUntil, now < s { return }
             if let last = lastReminderEnd, now.timeIntervalSince(last) < Self.gapMinutes * prefs.secondsPerMinute { return }
-            let due = BreakKind.allCases.filter { prefs.isEnabled($0) && elapsed[$0, default: 0] >= prefs.interval($0) }
-            if !due.isEmpty { phase = .waiting(Set(due), since: now) }
+            let due = Set(BreakKind.allCases.filter { prefs.isEnabled($0) && elapsed[$0, default: 0] >= prefs.interval($0) })
+                .union(laterKinds)
+            if !due.isEmpty { phase = .waiting(due, since: now) }
 
         case .waiting(let kinds, let since):
             if prefs.holdDuringCalls, let reason = BusyDetector.busyReason() {
@@ -189,9 +191,10 @@ final class Scheduler: ObservableObject {
 
     // MARK: Break lifecycle
 
-    /// `automatic`: started by the schedule (Later is offered, a soft chime plays),
-    /// as opposed to taken by hand from the menu.
+    /// `automatic`: started by the schedule (a soft chime plays), as opposed to
+    /// taken by hand from the menu. Later is always offered.
     private func begin(_ kinds: Set<BreakKind>, automatic: Bool) {
+        laterKinds = []
         phase = .inBreak(kinds)
         setStatus(.onBreak)
         if automatic && prefs.soundEnabled {
@@ -201,10 +204,9 @@ final class Scheduler: ObservableObject {
             kinds: kinds,
             pattern: prefs.breathingPattern,
             strict: prefs.strictMode,
-            canSnooze: automatic && snoozeCount < Self.maxSnoozes,
             sound: prefs.soundEnabled,
             onDone: { [weak self] in self?.finish(kinds, taken: true) },
-            onSnooze: { [weak self] in self?.snooze() },
+            onSnooze: { [weak self] in self?.snooze(kinds) },
             onSkip: { [weak self] in self?.finish(kinds, taken: false) },
             // An unclicked nudge still reminded you; it just isn't counted either way.
             onTimeout: { [weak self] in self?.finish(kinds, taken: nil) })
@@ -216,7 +218,7 @@ final class Scheduler: ObservableObject {
         var reset = kinds
         if kinds.contains(.stretch) { reset.insert(.eyes) }
         for k in reset { elapsed[k] = 0 }
-        snoozeCount = 0
+        laterKinds = []
         snoozeUntil = nil
         lastReminderEnd = Date()
         if let taken { Stats.shared.record(taken: taken) }
@@ -225,9 +227,9 @@ final class Scheduler: ObservableObject {
         setStatus(pausedUntil.map { .paused(until: $0) } ?? .running)
     }
 
-    private func snooze() {
+    private func snooze(_ kinds: Set<BreakKind>) {
         presenter.dismissBreak()
-        snoozeCount += 1
+        laterKinds = kinds
         snoozeUntil = Date().addingTimeInterval(Self.snoozeLength)
         phase = .counting
         lastTick = Date()
@@ -239,7 +241,7 @@ final class Scheduler: ObservableObject {
         if case .inBreak = phase { return }
         elapsed = [:]
         snoozeUntil = nil
-        snoozeCount = 0
+        laterKinds = []
         phase = .counting
         lastTick = Date()
     }
