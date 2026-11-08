@@ -8,8 +8,8 @@ A small macOS menu bar app that reminds you to rest your eyes, breathe and stret
 - Water on its own is a quiet nudge: a smaller island that doesn't take focus and slides away after 8 s. Ignored nudges don't count as skipped.
 - The menu bar panel follows the system's light/dark mode, or can be set to Light or Dark in Settings. Motion follows the system's Reduce Motion by default, or can be set to Full or Reduced in Settings (reduced: fades instead of springs, a still glow).
 - Reminders never land back to back: ones due within 5 min share a single card ("Stand up, grab some water"), and there are always at least 25 min between reminders.
-- Counts only active time. Idle 2+ min pauses the timers; away or locked 5+ min counts as a natural break.
-- Waits while the camera or microphone is on, or a full-screen app is in front, and for a pause in typing.
+- Counts only active time. Idle 2+ min pauses the timers; away or locked 15+ min counts as a natural break.
+- Waits for a pause in typing. In a call or watching something? Pause it from the menu bar.
 - Strict mode hides Skip; holding Esc for 3 seconds is always an emergency exit.
 
 ## Build

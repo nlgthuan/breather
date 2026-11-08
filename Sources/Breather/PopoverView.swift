@@ -131,7 +131,6 @@ struct PopoverView: View {
         case .running: "Breather is on"
         case .onBreak: "On a break"
         case .outsideHours: "Off · outside work hours"
-        case .holding(let reason): "Waiting · \(reason)"
         case .paused(let until):
             "Paused until " + until.formatted(date: Calendar.current.isDateInToday(until) ? .omitted : .abbreviated,
                                               time: .shortened)

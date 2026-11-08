@@ -4,7 +4,7 @@ import AppKit
 /// when to start a break.
 ///
 /// Flow for a due break:
-///   counting → waiting (for a call / full screen to end, and a pause in typing)
+///   counting → waiting (for a pause in typing)
 ///            → in break (the notch island opens and takes keyboard focus).
 /// There is no "start?" step: the break simply begins, and Later is always one key away.
 @MainActor
@@ -15,7 +15,6 @@ final class Scheduler: ObservableObject {
         case running
         case paused(until: Date)
         case outsideHours
-        case holding(String)
         case onBreak
     }
 
@@ -23,7 +22,7 @@ final class Scheduler: ObservableObject {
 
     // Tunables (seconds).
     static let pauseIdle: TimeInterval = 120      // idle this long: stop counting
-    static let resetIdle: TimeInterval = 300      // idle/away this long: counts as a natural break
+    static let resetIdle: TimeInterval = 900      // idle/away 15 min: counts as a natural break
     static let typingPause: TimeInterval = 2      // the island takes focus, so wait for a pause in typing…
     static let maxWaitForPause: TimeInterval = 90 // …but not forever
     static let snoozeLength: TimeInterval = 300
@@ -160,11 +159,6 @@ final class Scheduler: ObservableObject {
             if !due.isEmpty { phase = .waiting(due, since: now) }
 
         case .waiting(let kinds, let since):
-            if prefs.holdDuringCalls, let reason = BusyDetector.busyReason() {
-                phase = .waiting(kinds, since: now)
-                setStatus(.holding(reason))
-                return
-            }
             setStatus(.running)
             if idle >= Self.typingPause || now.timeIntervalSince(since) >= Self.maxWaitForPause {
                 begin(merge(kinds), automatic: true)

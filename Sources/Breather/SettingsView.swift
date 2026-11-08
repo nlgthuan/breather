@@ -66,7 +66,6 @@ struct SettingsPage: View {
         Group_(title: "Reminders",
                note: "Strict mode hides Skip; holding Esc for 3 s always gets you out. Reduced motion fades reminders in and keeps the glow still.") {
             Row("Strict mode") { Toggle("", isOn: $prefs.strictMode).themedSwitch() }
-            Row("Wait for calls & full screen") { Toggle("", isOn: $prefs.holdDuringCalls).themedSwitch() }
             Row("Soft sounds") { Toggle("", isOn: $prefs.soundEnabled).themedSwitch() }
             Row("Motion") {
                 Picker("", selection: $prefs.motion) {

@@ -85,7 +85,6 @@ final class Preferences: ObservableObject {
 
     @Published var strictMode: Bool { didSet { d.set(strictMode, forKey: "strictMode") } }
     @Published var soundEnabled: Bool { didSet { d.set(soundEnabled, forKey: "soundEnabled") } }
-    @Published var holdDuringCalls: Bool { didSet { d.set(holdDuringCalls, forKey: "holdDuringCalls") } }
     @Published var motion: MotionMode { didSet { d.set(motion.rawValue, forKey: "motion") } }
     @Published var appearance: AppearanceMode {
         didSet { d.set(appearance.rawValue, forKey: "appearance"); applyAppearance() }
@@ -140,7 +139,6 @@ final class Preferences: ObservableObject {
         breathingPattern = BreathingPattern(rawValue: d.string(forKey: "breathingPattern") ?? "") ?? .relaxed
         strictMode = bool("strictMode", false)
         soundEnabled = bool("soundEnabled", true)
-        holdDuringCalls = bool("holdDuringCalls", true)
         motion = MotionMode(rawValue: d.string(forKey: "motion") ?? "") ?? .system
         appearance = AppearanceMode(rawValue: d.string(forKey: "appearance") ?? "") ?? .system
         workHoursOnly = bool("workHoursOnly", false)
